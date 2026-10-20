@@ -5,10 +5,10 @@
    1. Réglages et petites aides
    ========================================================= */
 const DOMAINS = ['Personnel', 'Immobilier', 'Professionnel', 'Formation'];
-const DOM_COLOR = { Professionnel: 'var(--pro)', Immobilier: 'var(--immo)', Personnel: 'var(--perso)', Formation: 'var(--form)' };
+const DOM_COLOR = { Professionnel: 'var(--dot-pro)', Immobilier: 'var(--dot-immo)', Personnel: 'var(--dot-perso)', Formation: 'var(--dot-form)' };
 const ADD_TYPES = ['Tâche', 'Agenda', 'Projet', 'Idée business', 'Idée', 'À trier'];
 const PROJ_STATES = ['En cours', 'À lancer', 'En attente'];
-const STATE_COLOR = { 'En cours': '#5B9DFF', 'À lancer': '#B7BCC6', 'En attente': '#FFC24B' };
+const STATE_COLOR = { 'En cours': 'var(--dot-pro)', 'À lancer': 'var(--dot-none)', 'En attente': 'var(--dot-immo)' };
 const VIEWS = ['jour', 'semaine', 'plustard', 'projets', 'idees', 'atrier'];
 const CACHE_KEY = 'qg_cache_v1';
 
@@ -21,7 +21,9 @@ const ICON = {
   inbox: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 13l2.5-7h13L21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/></svg>',
   plus: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   plusSm: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
-  check: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0E1014" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  check: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  report: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/><path d="M16 5l4 4-4 4"/></svg>',
+  gear: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
   left: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>',
   right: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
   sync: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 20v-4h-4"/></svg>',
@@ -30,7 +32,7 @@ const ICON = {
 };
 
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const domColor = (d) => DOM_COLOR[d] || 'var(--none)';
+const domColor = (d) => DOM_COLOR[d] || 'var(--dot-none)';
 const pad = (n) => String(n).padStart(2, '0');
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -88,7 +90,7 @@ function isoWeek(k) {
 }
 function lateText(it) {
   const n = daysBetween(itemDay(it), todayKey());
-  return n <= 1 ? 'depuis hier' : `depuis ${n} jours`;
+  return n <= 1 ? 'En retard depuis hier' : `En retard depuis ${n} jours`;
 }
 
 /* =========================================================
@@ -250,7 +252,8 @@ function toast(text, opts = {}) {
 /* =========================================================
    5. Morceaux d'affichage réutilisés
    ========================================================= */
-const chip = (label, c) => `<span class="chip" style="--c:${c}">${esc(label)}</span>`;
+// catégorie = petit point coloré + nom en gris
+const cat = (label, c) => `<span class="cat" style="--c:${c}"><i aria-hidden="true"></i>${esc(label)}</span>`;
 
 function inboxBtn() {
   const n = S.items.filter((i) => i.type === 'À trier' && active(i)).length;
@@ -259,8 +262,11 @@ function inboxBtn() {
 function syncBtn() {
   return `<button class="icon-btn sm" type="button" data-a="sync" aria-label="Actualiser">${S.syncing ? ICON.sync.replace('<svg', '<svg class="spin"') : ICON.sync}</button>`;
 }
+function settingsBtn() {
+  return `<button class="icon-btn" type="button" data-a="settings" aria-label="Réglages">${ICON.gear}</button>`;
+}
 function header(eyebrow, title, right = '') {
-  return `<header class="hdr"><div class="hdr-txt"><span class="eyebrow">${esc(eyebrow)}</span><h1>${esc(title)}</h1></div><div style="display:flex;gap:8px;align-items:center">${right}</div></header>`;
+  return `<header class="hdr"><div class="hdr-txt"><span class="eyebrow">${esc(eyebrow)}</span><h1>${esc(title)}</h1></div><div class="hdr-btns">${right}</div></header>`;
 }
 function banner() {
   if (!S.error) return '';
@@ -268,8 +274,7 @@ function banner() {
 }
 
 function cardHTML(it, o = {}) {
-  const c = domColor(it.domain);
-  const meta = [chip(it.domain || 'Sans domaine', c)];
+  const meta = [cat(it.domain || 'Sans catégorie', domColor(it.domain))];
   if (o.late) meta.push(`<span class="late-txt">${lateText(it)}</span>`);
   if (o.showDay && itemDay(it)) meta.push(`<span>${esc(fmtShort(itemDay(it)))}</span>`);
   if (itemTime(it)) meta.push(`<span>${itemTime(it)}</span>`);
@@ -278,7 +283,7 @@ function cardHTML(it, o = {}) {
   const check = it.type === 'Tâche' || o.forceCheck
     ? `<button class="chk" type="button" data-a="done" data-id="${it.id}" aria-label="${it.archived ? 'Rouvrir' : 'Terminer'} : ${esc(it.title)}">${ICON.check}</button>`
     : '';
-  return `<div class="card ${o.late ? 'is-late' : ''} ${it.archived ? 'is-done' : ''}" style="--c:${c}">
+  return `<div class="card ${o.late ? 'is-late' : ''} ${it.archived ? 'is-done' : ''}">
     ${check}
     <button class="card-body" type="button" data-a="edit" data-id="${it.id}"><span class="card-title">${esc(it.title)}</span><span class="card-meta">${meta.join('')}</span></button>
     ${o.extra || ''}</div>`;
@@ -289,7 +294,7 @@ function rdvHTML(it) {
   const e = itemEndTime(it);
   const p = projectOf(it);
   return `<div class="rdv"><div class="rdv-time">${t || 'Journée'}${e ? `<span>${e}</span>` : ''}</div>
-    <button class="rdv-card" type="button" data-a="edit" data-id="${it.id}"><b>${esc(it.title)}</b><span>Agenda${it.domain ? ' · ' + esc(it.domain) : ''}${p ? ' · ' + esc(p.title) : ''}</span></button></div>`;
+    <button class="rdv-card" type="button" data-a="edit" data-id="${it.id}"><b>${esc(it.title)}</b><span class="card-meta">${cat(it.domain || 'Agenda', it.domain ? domColor(it.domain) : 'var(--dot-rdv)')}${p ? `<span>${esc(p.title)}</span>` : ''}</span></button></div>`;
 }
 
 /* =========================================================
@@ -307,7 +312,7 @@ function viewJour() {
   const pct = total ? Math.round((done / total) * 100) : 0;
 
   return `<main class="screen">
-    ${header(cap(fmt(t, { weekday: 'long', day: 'numeric', month: 'long' })), "Aujourd'hui", syncBtn() + inboxBtn())}
+    ${header(cap(fmt(t, { weekday: 'long', day: 'numeric', month: 'long' })), "Aujourd'hui", inboxBtn() + settingsBtn())}
     ${banner()}
     <section class="today-box" aria-label="Avancement du jour">
       <div class="today-top"><span>Ta journée</span><strong>${done} / ${total} faite${done > 1 ? 's' : ''}</strong></div>
@@ -315,7 +320,7 @@ function viewJour() {
       <div class="today-stats"><span class="l">${lateOpen} en retard</span><span>${today.filter(active).length} tâche${today.filter(active).length > 1 ? 's' : ''}</span><span>${rdv.length} rendez-vous</span></div>
     </section>
     ${late.length ? `<section class="sec"><h2 class="late">En retard</h2>
-      ${late.map((i) => cardHTML(i, { late: !i.archived, extra: i.archived ? '' : `<button class="btn-sm" type="button" data-a="totoday" data-id="${i.id}">Aujourd'hui</button>` })).join('')}</section>` : ''}
+      ${late.map((i) => cardHTML(i, { late: !i.archived, extra: i.archived ? '' : `<button class="icon-mini" type="button" data-a="totoday" data-id="${i.id}" aria-label="Reporter à aujourd’hui : ${esc(i.title)}" title="Reporter à aujourd’hui">${ICON.report}</button>` })).join('')}</section>` : ''}
     <section class="sec"><h2>Rendez-vous</h2>
       ${rdv.length ? rdv.map(rdvHTML).join('') : '<div class="empty">Aucun rendez-vous aujourd’hui</div>'}</section>
     <section class="sec"><div class="sec-h"><h2>Tâches du jour</h2></div>
@@ -324,14 +329,14 @@ function viewJour() {
 }
 
 function weekCardHTML(it, t) {
-  const c = it.type === 'Agenda' ? '#E5E7EB' : domColor(it.domain);
   const late = it.type === 'Tâche' && itemDay(it) < t;
   const label = it.type === 'Agenda' ? 'RDV' + (itemTime(it) ? ' · ' + itemTime(it) : '')
     : it.type === 'Projet' ? 'Échéance projet' : (it.domain || 'Tâche');
+  const c = it.type === 'Agenda' && !it.domain ? 'var(--dot-rdv)' : domColor(it.domain);
   const p = it.type !== 'Projet' ? projectOf(it) : null;
-  const sub = [late ? 'En retard' : '', p ? p.title : '', it.type === 'Tâche' && itemTime(it) ? itemTime(it) : ''].filter(Boolean).join(' · ');
-  return `<div class="wcard ${late ? 'is-late' : ''} ${it.type === 'Agenda' ? 'is-rdv' : ''} ${S.justDropped === it.id ? 'just-dropped' : ''}" style="--c:${c}" data-id="${it.id}" data-a="edit" role="button" tabindex="0" aria-label="${esc(it.title)}">
-    ${chip(label, c)}<span class="card-title">${esc(it.title)}</span>${sub ? `<span class="card-meta">${esc(sub)}</span>` : ''}</div>`;
+  const extra = [it.type === 'Tâche' && itemTime(it) ? itemTime(it) : '', p ? p.title : ''].filter(Boolean).map((x) => `<span>${esc(x)}</span>`).join('');
+  return `<div class="wcard ${late ? 'is-late' : ''} ${S.justDropped === it.id ? 'just-dropped' : ''}" data-id="${it.id}" data-a="edit" role="button" tabindex="0" aria-label="${esc(it.title)}">
+    <span class="card-title">${esc(it.title)}</span><span class="card-meta">${cat(label, c)}${late ? '<span class="late-txt">En retard</span>' : ''}${extra}</span></div>`;
 }
 
 function viewSemaine() {
@@ -391,14 +396,14 @@ function viewPlusTard() {
   const blanks = (parseKey(first).getDay() + 6) % 7;
   const cells = [...Array(blanks)].map(() => '<span class="mcell blank" aria-hidden="true"></span>').join('') + keys.map((k) => {
     const ev = inMonth(k);
-    const dots = ev.slice(0, 3).map((i) => `<i style="--c:${i.type === 'Agenda' ? '#E5E7EB' : domColor(i.domain)}"></i>`).join('');
+    const dots = ev.slice(0, 3).map((i) => `<i style="--c:${i.type === 'Agenda' && !i.domain ? 'var(--dot-rdv)' : domColor(i.domain)}"></i>`).join('');
     return `<button type="button" class="mcell ${ev.length ? 'has' : ''} ${k === t ? 'is-today' : ''} ${k === S.selDay ? 'sel' : ''}" data-a="selday" data-day="${k}" aria-label="${esc(fmt(k, { weekday: 'long', day: 'numeric', month: 'long' }))}, ${ev.length} élément${ev.length > 1 ? 's' : ''}" aria-pressed="${k === S.selDay}">${parseKey(k).getDate()}<span class="dots">${dots}</span></button>`;
   }).join('');
   const sel = inMonth(S.selDay).sort(byDayThenTime);
   const todo = S.items.filter((i) => i.type === 'Tâche' && active(i) && !i.date).sort((a, b) => (b.created || '').localeCompare(a.created || ''));
 
   return `<main class="screen">
-    ${header('Vue mois', 'Plus tard', inboxBtn())}
+    ${header('Vue mois', 'Plus tard', inboxBtn() + settingsBtn())}
     ${banner()}
     <section class="month" aria-label="Calendrier">
       <div class="month-h">
@@ -456,7 +461,7 @@ function viewProjets() {
     const c = domColor(p.domain);
     const s = stateOf(p);
     return `<button class="proj" type="button" style="--c:${c}" data-a="proj" data-id="${p.id}">
-      <span class="proj-top">${chip(p.domain || 'Sans domaine', c)}<span class="state" style="color:${STATE_COLOR[s]};border-color:${STATE_COLOR[s]}66">${s}</span></span>
+      <span class="proj-top">${cat(p.domain || 'Sans catégorie', c)}<span class="state" style="--s:${STATE_COLOR[s]}"><i aria-hidden="true"></i>${s}</span></span>
       <h3>${esc(p.title)}</h3>
       <span class="proj-info"><span>${st.tasks.length ? `${st.done} / ${st.tasks.length} tâches · ${st.pct} %` : 'Aucune tâche liée'}</span><span>${esc(projWhen(p))}</span></span>
       <span class="pbar"><i style="width:${Math.max(st.pct, 2)}%"></i>${st.marks.map((mk) => `<em class="${mk.done ? 'done' : ''}" style="left:${mk.left}%" title="${esc(mk.title)}"></em>`).join('')}</span>
@@ -465,7 +470,7 @@ function viewProjets() {
   }).join('');
 
   return `<main class="screen">
-    ${header(`${all.length} projets · ${counts['En cours']} en cours`, 'Projets', inboxBtn())}
+    ${header(`${all.length} projets · ${counts['En cours']} en cours`, 'Projets', inboxBtn() + settingsBtn())}
     ${banner()}
     <div class="filters" role="group" aria-label="Filtrer par état">
       ${['En cours', 'À lancer', 'En attente', 'Tous'].map((k) => `<button class="pill" type="button" data-a="pfilter" data-v="${k}" aria-pressed="${f === k}">${k}<small>${counts[k]}</small></button>`).join('')}
@@ -478,10 +483,10 @@ function ideaHTML(it) {
   const c = domColor(it.domain);
   const open = S.openIdea === it.id;
   return `<article class="idea ${open ? 'open' : ''}" style="--c:${c}">
-    <button class="idea-top" type="button" data-a="openidea" data-id="${it.id}" aria-expanded="${open}"><span>${esc(it.title)}</span>${it.domain ? chip(it.domain, c) : ''}</button>
+    <button class="idea-top" type="button" data-a="openidea" data-id="${it.id}" aria-expanded="${open}"><span class="card-title">${esc(it.title)}</span><span class="card-meta">${cat(it.domain || 'Sans catégorie', c)}</span></button>
     ${open ? `<div class="grid2">
       <button class="big light" type="button" data-a="totask" data-id="${it.id}">→ Tâche</button>
-      <button class="big blue" type="button" data-a="toproj" data-id="${it.id}">→ Projet</button>
+      <button class="big" type="button" data-a="toproj" data-id="${it.id}">→ Projet</button>
       <button class="big" type="button" data-a="edit" data-id="${it.id}">Modifier</button>
       <button class="big" type="button" data-a="archive" data-id="${it.id}">Archiver</button>
     </div>` : ''}
@@ -493,13 +498,13 @@ function viewIdees() {
   const biz = S.items.filter((i) => i.type === 'Idée business' && active(i)).sort(sort);
   const other = S.items.filter((i) => i.type === 'Idée' && active(i)).sort(sort);
   return `<main class="screen">
-    ${header(`${biz.length + other.length} idées en réserve`, 'Idées', inboxBtn())}
+    ${header(`${biz.length + other.length} idées en réserve`, 'Idées', inboxBtn() + settingsBtn())}
     ${banner()}
-    <section class="zone biz" aria-label="Idées business">
+    <section class="zone" aria-label="Idées business">
       <div class="zone-h"><h2>Idées business</h2><button class="btn-sm" type="button" data-a="add" data-type="Idée business">${ICON.plusSm} Idée</button></div>
       ${biz.length ? biz.map(ideaHTML).join('') : '<div class="empty">Aucune idée business</div>'}
     </section>
-    <section class="zone other" aria-label="Autres idées">
+    <section class="zone" aria-label="Autres idées">
       <div class="zone-h"><h2>Autres idées</h2><button class="btn-sm" type="button" data-a="add" data-type="Idée">${ICON.plusSm} Idée</button></div>
       ${other.length ? other.map(ideaHTML).join('') : '<div class="empty">Cadeaux, sorties, voyages, envies… Rien pour l’instant.</div>'}
     </section>
@@ -522,9 +527,9 @@ function viewATrier() {
       ${open ? `<span class="tri-q">C’est quoi ?</span>
       <div class="grid2">
         <button class="big light" type="button" data-a="sort" data-to="Tâche" data-id="${i.id}">Tâche</button>
-        <button class="big blue" type="button" data-a="sort" data-to="Projet" data-id="${i.id}">Projet</button>
-        <button class="big gold" type="button" data-a="sort" data-to="Idée business" data-id="${i.id}">Idée business</button>
-        <button class="big green" type="button" data-a="sort" data-to="Idée" data-id="${i.id}">Autre idée</button>
+        <button class="big" type="button" data-a="sort" data-to="Projet" data-id="${i.id}">Projet</button>
+        <button class="big" type="button" data-a="sort" data-to="Idée business" data-id="${i.id}">Idée business</button>
+        <button class="big" type="button" data-a="sort" data-to="Idée" data-id="${i.id}">Autre idée</button>
         <button class="big full" type="button" data-a="sort" data-to="Agenda" data-id="${i.id}">Agenda (choisir date et heure)</button>
       </div>
       <div class="secondary-row"><button class="btn-sm btn-ghost" type="button" data-a="edit" data-id="${i.id}">Modifier</button><button class="btn-sm btn-ghost" type="button" data-a="archive" data-id="${i.id}">Archiver</button></div>` : ''}
@@ -652,7 +657,7 @@ function projectSheetHTML() {
   return `<div class="backdrop" data-a="close"></div>
   <section class="sheet" role="dialog" aria-modal="true" aria-label="${esc(p.title)}">
     <span class="grip" aria-hidden="true"></span><button class="icon-btn sm sheet-x" type="button" data-a="close" aria-label="Fermer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-    <div class="proj-top">${chip(p.domain || 'Sans domaine', c)}<span class="eyebrow">${esc(projWhen(p))}</span></div>
+    <div class="proj-top">${cat(p.domain || 'Sans catégorie', c)}<span>${esc(projWhen(p))}</span></div>
     <h2>${esc(p.title)}</h2>
     <div class="field"><span>État</span><div class="pills">
       ${PROJ_STATES.map((v) => `<button class="pill" type="button" data-a="pstate" data-id="${p.id}" data-v="${v}" aria-pressed="${s === v}">${v}</button>`).join('')}
@@ -688,12 +693,43 @@ function planSheetHTML() {
   </section>`;
 }
 
+/* ---------- Réglages : thème clair (par défaut) ou sombre ---------- */
+const THEME_KEY = 'qg_theme';
+const currentTheme = () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
+function applyTheme(t) {
+  const theme = t === 'dark' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = theme;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', theme === 'dark' ? '#0E1014' : '#F3F2EF');
+  try { localStorage.setItem(THEME_KEY, theme); } catch { /* rien */ }
+}
+function settingsSheetHTML() {
+  const t = currentTheme();
+  const at = S.syncedAt ? `aujourd’hui à ${pad(S.syncedAt.getHours())}:${pad(S.syncedAt.getMinutes())}` : 'pas encore';
+  return `<div class="backdrop" data-a="close"></div>
+  <section class="sheet" role="dialog" aria-modal="true" aria-label="Réglages">
+    <span class="grip" aria-hidden="true"></span><button class="icon-btn sm sheet-x" type="button" data-a="close" aria-label="Fermer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <h2>Réglages</h2>
+    <div class="field"><span>Apparence</span>
+      <div class="pills" role="group" aria-label="Thème">
+        <button class="pill" type="button" data-a="theme" data-v="light" aria-pressed="${t === 'light'}">Clair</button>
+        <button class="pill" type="button" data-a="theme" data-v="dark" aria-pressed="${t === 'dark'}">Sombre</button>
+      </div>
+    </div>
+    <div class="field"><span>Notion</span>
+      <p class="note">Dernière mise à jour : ${at}.</p>
+      <button class="link-btn" type="button" data-a="sync">${S.syncing ? ICON.sync.replace('<svg', '<svg class="spin"') : ICON.sync} Actualiser maintenant</button>
+    </div>
+    <button class="link-btn" type="button" data-a="logout">Se déconnecter</button>
+  </section>`;
+}
+
 function renderSheet() {
   const root = document.getElementById('sheet-root');
   if (!S.sheet) { root.innerHTML = ''; return; }
   const k = S.sheet.kind;
   keep(root, () => {
-    root.innerHTML = k === 'project' ? projectSheetHTML() : k === 'plan' ? planSheetHTML() : formSheetHTML();
+    root.innerHTML = k === 'project' ? projectSheetHTML() : k === 'plan' ? planSheetHTML() : k === 'settings' ? settingsSheetHTML() : formSheetHTML();
   });
   if (!root.innerHTML.trim()) closeSheet();
 }
@@ -785,7 +821,7 @@ function render() {
   keep(app, () => { app.innerHTML = v() + tabbar(); });
   if (S.view === 'semaine') setupWeek(keepScrollX);
   else unbindWeekDnd();
-  if (S.sheet && (S.sheet.kind === 'project' || S.sheet.kind === 'plan')) renderSheet();
+  if (S.sheet && ['project', 'plan', 'settings'].includes(S.sheet.kind)) renderSheet();
 }
 
 function setupWeek(scrollX) {
@@ -1017,6 +1053,17 @@ document.addEventListener('click', (e) => {
   switch (a) {
     case 'tab': setView(el.dataset.v); break;
     case 'sync': load(); break;
+    case 'settings': openSheet({ kind: 'settings' }); break;
+    case 'theme': applyTheme(el.dataset.v); renderSheet(); break;
+    case 'logout': {
+      closeSheet();
+      fetch('/api/login', { method: 'DELETE', credentials: 'same-origin' }).catch(() => {});
+      try { localStorage.removeItem(CACHE_KEY); } catch { /* rien */ }
+      S.items = [];
+      S.needLogin = true;
+      render();
+      break;
+    }
     case 'add': openSheet({ kind: 'add', form: defaultsForAdd({ date: el.dataset.date, type: el.dataset.type }) }); break;
     case 'edit': {
       if (Date.now() - S.justDragged < 450) return;
@@ -1177,6 +1224,7 @@ document.addEventListener('submit', async (e) => {
 /* =========================================================
    10. Démarrage
    ========================================================= */
+try { applyTheme(localStorage.getItem(THEME_KEY) || 'light'); } catch { applyTheme('light'); }
 render();
 load(true);
 

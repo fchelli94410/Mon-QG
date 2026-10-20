@@ -1,7 +1,7 @@
 // Garde l'appli disponible même avec un réseau faible.
 // Les données (/api) passent toujours par internet, jamais par le cache.
-const VERSION = 'qg-v2';
-const SHELL = ['/', '/index.html', '/app.css?v=2', '/app.js?v=2', '/vendor/dndkit.min.js?v=0.5.1', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/apple-touch-icon.png'];
+const VERSION = 'qg-v3';
+const SHELL = ['/', '/index.html', '/app.css?v=3', '/app.js?v=3', '/vendor/dndkit.min.js?v=0.5.1', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
