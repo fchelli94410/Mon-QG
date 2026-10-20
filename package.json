@@ -1,0 +1,7 @@
+{
+  "name": "mon-qg",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mon QG — tableau de bord personnel (Notion + Outlook)",
+  "type": "module"
+}
