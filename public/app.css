@@ -200,11 +200,34 @@ h1 { margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.02em; line
 .wcard .chip { align-self: flex-start; font-size: 10px; padding: 2px 7px; }
 .wcard .card-meta { font-size: 11px; }
 .col-add { height: 44px; border-radius: 14px; border: 0; background: transparent; color: var(--muted); font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; padding: 0 8px; }
-.drag-ghost { opacity: 1 !important; background: rgba(91,157,255,.08) !important; border: 2px dashed var(--pro) !important; }
-.drag-ghost > * { visibility: hidden; }
-.drag-fly { transform: rotate(4deg) scale(1.04) !important; box-shadow: 0 22px 44px rgba(0,0,0,.6) !important; border-color: var(--pro) !important; opacity: .97 !important; }
-.drag-chosen { transform: scale(1.02); }
-body.dragging { user-select: none; -webkit-user-select: none; }
+/* Glisser-déposer (dnd-kit) */
+.wcard { transition: transform .2s ease, opacity .2s ease; cursor: grab; }
+.wcard:active { transform: scale(.97); }
+.wcard.is-source { opacity: .35; border-style: dashed; transform: none; }
+.wcard.just-dropped { animation: dropIn .45s cubic-bezier(.2,.8,.2,1); }
+@keyframes dropIn {
+  0% { transform: scale(1.06); box-shadow: 0 0 0 3px rgba(91,157,255,.55); }
+  100% { transform: none; box-shadow: 0 0 0 0 rgba(91,157,255,0); }
+}
+.drag-overlay { pointer-events: none; }
+.drag-overlay > .wcard { height: 100%; margin: 0; }
+.drag-overlay .wcard.lifted {
+  cursor: grabbing; transform: rotate(3deg) scale(1.05); border-color: var(--pro);
+  box-shadow: 0 22px 44px rgba(0,0,0,.6); animation: lift .16s ease-out;
+  transition: transform .2s cubic-bezier(.2,.8,.2,1), box-shadow .2s;
+}
+.drag-overlay.over-pill .wcard.lifted { transform: scale(.55); transform-origin: 0 0; opacity: .9; }
+.drag-overlay[data-dnd-dropping] .wcard.lifted { transform: none; box-shadow: 0 6px 16px rgba(0,0,0,.35); }
+@keyframes lift { from { transform: none; box-shadow: none; } }
+.col, .strip button { transition: background .15s, border-color .15s, box-shadow .15s, transform .15s, color .15s; }
+.col.drop-target { background: #18233A; border-color: var(--pro); box-shadow: 0 0 0 2px rgba(91,157,255,.35); }
+.col.drop-target .col-h b { color: #8DB9FF; }
+.col.drop-target .col-list:empty::before { content: "Déposer ici"; border: 2px dashed var(--pro); color: #8DB9FF; }
+.col.drop-target .col-list:not(:empty)::after { content: ""; height: 52px; border-radius: 16px; border: 2px dashed var(--pro); background: rgba(91,157,255,.08); }
+.strip button.drop-target { background: var(--pro); color: var(--bg); transform: scale(1.1); }
+.strip button.drop-target i { background: var(--bg); }
+body.dragging { user-select: none; -webkit-user-select: none; cursor: grabbing; }
+body.dragging .week { scroll-snap-type: none; }
 
 @media (min-width: 1000px) {
   .week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); overflow: visible; }

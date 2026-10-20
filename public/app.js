@@ -330,7 +330,7 @@ function weekCardHTML(it, t) {
     : it.type === 'Projet' ? 'Échéance projet' : (it.domain || 'Tâche');
   const p = it.type !== 'Projet' ? projectOf(it) : null;
   const sub = [late ? 'En retard' : '', p ? p.title : '', it.type === 'Tâche' && itemTime(it) ? itemTime(it) : ''].filter(Boolean).join(' · ');
-  return `<div class="wcard ${late ? 'is-late' : ''} ${it.type === 'Agenda' ? 'is-rdv' : ''}" style="--c:${c}" data-id="${it.id}" data-a="edit" role="button" tabindex="0" aria-label="${esc(it.title)}">
+  return `<div class="wcard ${late ? 'is-late' : ''} ${it.type === 'Agenda' ? 'is-rdv' : ''} ${S.justDropped === it.id ? 'just-dropped' : ''}" style="--c:${c}" data-id="${it.id}" data-a="edit" role="button" tabindex="0" aria-label="${esc(it.title)}">
     ${chip(label, c)}<span class="card-title">${esc(it.title)}</span>${sub ? `<span class="card-meta">${esc(sub)}</span>` : ''}</div>`;
 }
 
@@ -768,9 +768,8 @@ function keep(root, fn) {
   });
 }
 
-let sortables = [];
 function render() {
-  if (S.dragging) { S.renderLater = true; return; }
+  if (S.dragging || S.dropping) { S.renderLater = true; return; }
   const app = document.getElementById('app');
   if (S.needLogin) { app.innerHTML = viewLogin(); closeSheet(); return; }
   if (S.loading && !S.items.length) {
@@ -785,12 +784,11 @@ function render() {
   app.classList.toggle('no-anim', !fresh);
   keep(app, () => { app.innerHTML = v() + tabbar(); });
   if (S.view === 'semaine') setupWeek(keepScrollX);
+  else unbindWeekDnd();
   if (S.sheet && (S.sheet.kind === 'project' || S.sheet.kind === 'plan')) renderSheet();
 }
 
 function setupWeek(scrollX) {
-  sortables.forEach((s) => s.destroy());
-  sortables = [];
   const wk = document.getElementById('week');
   if (!wk) return;
   if (scrollX != null) wk.scrollLeft = scrollX;
@@ -800,30 +798,165 @@ function setupWeek(scrollX) {
     else wk.scrollLeft = 0;
   }
   S.scrollWeek = false;
-  if (!window.Sortable) return;
-  wk.querySelectorAll('.col-list').forEach((el) => {
-    sortables.push(window.Sortable.create(el, {
-      group: 'week', animation: 180, easing: 'cubic-bezier(.2,.8,.2,1)',
-      delay: 200, delayOnTouchOnly: true, touchStartThreshold: 6,
-      forceFallback: true, fallbackOnBody: true, fallbackTolerance: 3,
-      fallbackClass: 'drag-fly', ghostClass: 'drag-ghost', chosenClass: 'drag-chosen',
-      scroll: true, scrollSensitivity: 70, scrollSpeed: 16, bubbleScroll: true,
-      onStart() { S.dragging = true; document.body.classList.add('dragging'); if (navigator.vibrate) navigator.vibrate(10); },
-      onEnd(evt) {
-        S.dragging = false;
-        S.justDragged = Date.now();
-        document.body.classList.remove('dragging');
-        const id = evt.item.dataset.id;
-        const to = evt.to.dataset.day;
-        const from = evt.from.dataset.day;
-        const it = byId(id);
-        if (it && to && to !== from && it.date) {
-          update(id, { date: shiftDate(it.date, to) }).catch(() => {});
-        } else render();
-        if (S.renderLater) { S.renderLater = false; render(); }
+  bindWeekDnd();
+}
+
+/* ---------- Glisser-déposer de la semaine (dnd-kit) ----------
+   Au doigt : appui long de 200 ms pour attraper une carte ; un geste plus rapide fait défiler.
+   À la souris : on attrape dès 4 px de mouvement.
+   Un aperçu de la carte suit le doigt (calque dnd-kit) ; la colonne et la pastille du jour visé s'éclairent.
+   Au lâcher, l'aperçu glisse jusqu'à sa nouvelle place, puis la date part vers Notion. */
+const DND = { manager: null, feedback: null, overlay: null, entities: [], from: null, lit: [], pending: null };
+if (location.hostname === 'localhost') window.__DND = DND; // aide aux tests locaux
+
+function dndManager() {
+  if (DND.manager || !window.DndKit) return DND.manager;
+  const K = window.DndKit;
+  const C = K.PointerActivationConstraints;
+  const titleOf = (src) => { const it = src && byId(src.data.id); return it ? it.title : 'la tâche'; };
+  const dayLabel = (tgt) => (tgt ? fmt(tgt.data.day, { weekday: 'long', day: 'numeric', month: 'long' }) : '');
+  const m = new K.DragDropManager({
+    sensors: [K.PointerSensor.configure({
+      activationConstraints(event) {
+        if (event.pointerType === 'mouse') return [new C.Distance({ value: 4 })];
+        return [new C.Delay({ value: 200, tolerance: 8 })];
       }
-    }));
+    })],
+    plugins: [
+      K.Feedback,
+      K.AutoScroller,
+      K.Cursor,
+      K.PreventSelection,
+      K.Accessibility.configure({
+        screenReaderInstructions: { draggable: 'Appui long puis glisser vers un autre jour. Ou ouvrir la tâche pour changer sa date.' },
+        announcements: {
+          dragstart: (e) => `${titleOf(e.operation.source)} attrapée.`,
+          dragover: (e) => (e.operation.target ? `Au-dessus de ${dayLabel(e.operation.target)}.` : undefined),
+          dragend: (e) => (e.canceled || !e.operation.target ? 'Déplacement annulé.' : `${titleOf(e.operation.source)} déposée ${dayLabel(e.operation.target)}.`)
+        }
+      })
+    ]
   });
+  DND.feedback = m.plugins.find((p) => p instanceof K.Feedback) || null;
+  // Calque d'aperçu : dnd-kit le place sous le doigt pendant le glisser.
+  const ov = document.createElement('div');
+  ov.className = 'drag-overlay';
+  ov.setAttribute('data-dnd-overlay', '');
+  ov.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(ov);
+  DND.overlay = ov;
+  m.monitor.addEventListener('beforedragstart', onDndBefore);
+  m.monitor.addEventListener('dragstart', onDndStart);
+  m.monitor.addEventListener('dragover', onDndOver);
+  m.monitor.addEventListener('dragend', onDndEnd);
+  DND.manager = m;
+  return m;
+}
+
+function unbindWeekDnd() {
+  DND.entities.forEach((e) => e.destroy());
+  DND.entities = [];
+}
+
+function bindWeekDnd() {
+  unbindWeekDnd();
+  const m = dndManager();
+  if (!m) return;
+  const K = window.DndKit;
+  document.querySelectorAll('#week .wcard[data-id]').forEach((el) => {
+    DND.entities.push(new K.Draggable({ id: 'card:' + el.dataset.id, element: el, data: { id: el.dataset.id, day: el.closest('.col-list').dataset.day } }, m));
+  });
+  document.querySelectorAll('#week .col').forEach((el) => {
+    const day = el.querySelector('.col-list').dataset.day;
+    DND.entities.push(new K.Droppable({ id: 'col:' + day, element: el, data: { day, kind: 'col' }, collisionDetector: K.pointerIntersection }, m));
+  });
+  document.querySelectorAll('.strip button[data-day]').forEach((el) => {
+    DND.entities.push(new K.Droppable({ id: 'pill:' + el.dataset.day, element: el, data: { day: el.dataset.day, kind: 'pill' }, collisionDetector: K.pointerIntersection }, m));
+  });
+}
+
+function onDndBefore(e) {
+  const el = e.operation.source && e.operation.source.element;
+  if (!el || !DND.overlay) return;
+  const card = el.cloneNode(true);
+  ['data-a', 'tabindex', 'id', 'role', 'aria-label', 'aria-describedby', 'aria-roledescription', 'aria-pressed', 'aria-disabled'].forEach((a) => card.removeAttribute(a));
+  card.classList.remove('just-dropped');
+  card.classList.add('lifted');
+  DND.overlay.replaceChildren(card);
+  if (DND.feedback) {
+    DND.feedback.overlay = DND.overlay;
+    DND.feedback.dropAnimation = { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' };
+  }
+}
+
+function onDndStart(e) {
+  const src = e.operation.source;
+  S.dragging = true;
+  DND.from = src ? src.data.day : null;
+  document.body.classList.add('dragging');
+  if (src && src.element) src.element.classList.add('is-source');
+  if (navigator.vibrate) navigator.vibrate(12);
+}
+
+function lightUp(day) {
+  DND.lit.forEach((el) => el.classList.remove('drop-target'));
+  DND.lit = [];
+  if (!day || day === DND.from) return;
+  const col = document.getElementById('col-' + day);
+  const pill = document.querySelector(`.strip button[data-day="${day}"]`);
+  [col, pill].forEach((el) => { if (el) { el.classList.add('drop-target'); DND.lit.push(el); } });
+}
+
+function onDndOver(e) {
+  const tgt = e.operation.target;
+  lightUp(tgt ? tgt.data.day : null);
+  // au-dessus des pastilles, l'aperçu rétrécit pour laisser voir le jour visé
+  if (DND.overlay) DND.overlay.classList.toggle('over-pill', !!(tgt && tgt.data.kind === 'pill'));
+}
+
+function onDndEnd(e) {
+  const src = e.operation.source;
+  const tgt = e.operation.target;
+  const id = src && src.data.id;
+  const to = tgt && tgt.data.day;
+  const moved = !e.canceled && id && to && to !== DND.from;
+  lightUp(null);
+  if (DND.overlay) DND.overlay.classList.remove('over-pill');
+  document.body.classList.remove('dragging');
+  S.dragging = false;
+  S.justDragged = Date.now();
+
+  if (moved && src.element) {
+    // La carte prend tout de suite sa nouvelle place : l'aperçu glisse jusqu'à elle.
+    const list = document.querySelector(`#week .col-list[data-day="${to}"]`);
+    const colBox = list && list.closest('.col').getBoundingClientRect();
+    const visible = colBox && colBox.right > 0 && colBox.left < window.innerWidth;
+    if (list) list.appendChild(src.element);
+    if (DND.feedback && (!visible || tgt.data.kind === 'pill')) DND.feedback.dropAnimation = null; // jour hors écran : pas de vol
+    DND.pending = { id, to };
+  } else if (src && src.element) {
+    src.element.classList.remove('is-source');
+  }
+  S.dropping = true;
+  setTimeout(finishDrop, 260); // laisse l'animation se terminer
+}
+
+function finishDrop() {
+  S.dropping = false;
+  const p = DND.pending;
+  DND.pending = null;
+  if (DND.overlay) DND.overlay.replaceChildren();
+  if (p) {
+    const it = byId(p.id);
+    S.justDropped = p.id;
+    if (it && it.date) {
+      update(p.id, { date: shiftDate(it.date, p.to) })
+        .then(() => toast('Déplacé au ' + fmt(p.to, { weekday: 'long', day: 'numeric' })))
+        .catch(() => {});
+    } else render();
+    setTimeout(() => { S.justDropped = null; }, 700);
+  } else if (S.renderLater) render();
+  S.renderLater = false;
 }
 
 /* =========================================================
