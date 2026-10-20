@@ -120,6 +120,23 @@ function linkedOf(p) {
 }
 const byDayThenTime = (a, b) => (itemDay(a) || '').localeCompare(itemDay(b) || '') || itemTime(a).localeCompare(itemTime(b));
 const doneLast = (a, b) => (a.archived - b.archived) || itemTime(a).localeCompare(itemTime(b)) || (a.created || '').localeCompare(b.created || '');
+// Ordre choisi à la main (colonne Notion « Ordre ») : les cartes déjà rangées passent d'abord, dans leur ordre ;
+// les autres suivent avec le tri habituel.
+const hasOrder = (i) => typeof i.order === 'number';
+const byOrder = (fallback) => (a, b) => {
+  const oa = hasOrder(a);
+  const ob = hasOrder(b);
+  if (oa && ob && a.order !== b.order) return a.order - b.order;
+  if (oa !== ob) return oa ? -1 : 1;
+  return fallback(a, b);
+};
+const newestFirst = (a, b) => (b.created || '').localeCompare(a.created || '');
+const dayListSort = byOrder((a, b) => {
+  const ta = itemTime(a) || (a.type === 'Agenda' ? '00:00' : '99:99');
+  const tb = itemTime(b) || (b.type === 'Agenda' ? '00:00' : '99:99');
+  return ta.localeCompare(tb) || (a.created || '').localeCompare(b.created || '');
+});
+const todayListSort = (a, b) => (a.archived - b.archived) || byOrder(doneLast)(a, b);
 
 try {
   const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
@@ -204,6 +221,54 @@ async function update(id, patch) {
   }
 }
 
+// Plusieurs fiches d'un coup (nouvel ordre d'une liste) : écran tout de suite, Notion en arrière-plan.
+async function updateMany(changes, okText) {
+  const list = changes.filter((c) => byId(c.id) && c.patch && Object.keys(c.patch).length);
+  if (!list.length) { render(); return; }
+  const before = list.map((c) => { const it = byId(c.id); return [it, { ...it, linked: [...it.linked] }]; });
+  list.forEach((c) => Object.assign(byId(c.id), c.patch));
+  render();
+  try {
+    const d = list.length === 1
+      ? { items: [(await api('/api/item?id=' + encodeURIComponent(list[0].id), { method: 'PATCH', body: list[0].patch })).item] }
+      : await api('/api/batch', { method: 'POST', body: { updates: list } });
+    (d.items || []).forEach((n) => { const it = byId(n.id); if (it) Object.assign(it, n, { linked: n.linked.length ? n.linked : it.linked }); });
+    if (d.failed && d.failed.length) {
+      const bad = new Set(d.failed.map((f) => f.id));
+      before.forEach(([it, b]) => { if (bad.has(it.id)) Object.assign(it, b); });
+      render();
+      toast('Pas tout enregistré : ' + d.message, { err: true });
+      return;
+    }
+    saveCache();
+    render();
+    if (okText) toast(okText);
+  } catch (e) {
+    if (e.message === 'login') return;
+    before.forEach(([it, b]) => Object.assign(it, b));
+    render();
+    toast('Pas enregistré : ' + e.message, { err: true });
+  }
+}
+
+// Calcule le nouvel ordre d'une liste après un déplacement (le moins de fiches possible à modifier).
+function orderPatches(ids, movedId) {
+  const items = ids.map(byId).filter(Boolean);
+  const idx = items.findIndex((i) => i.id === movedId);
+  const others = items.filter((_, i) => i !== idx);
+  const sorted = others.every((it, i) => hasOrder(it) && (i === 0 || it.order > others[i - 1].order));
+  if (idx > -1 && sorted) {
+    const prev = items[idx - 1];
+    const next = items[idx + 1];
+    let v = 1000;
+    if (prev && next) v = (prev.order + next.order) / 2;
+    else if (prev) v = prev.order + 1000;
+    else if (next) v = next.order - 1000;
+    if (!(prev && next) || next.order - prev.order > 0.01) return [{ id: movedId, order: Math.round(v * 1000) / 1000 }];
+  }
+  return items.map((it, i) => ({ id: it.id, order: (i + 1) * 1000 })).filter((o) => byId(o.id).order !== o.order);
+}
+
 async function create(input) {
   const d = await api('/api/items', { method: 'POST', body: input });
   S.items.push(d.item);
@@ -283,7 +348,7 @@ function cardHTML(it, o = {}) {
   const check = it.type === 'Tâche' || o.forceCheck
     ? `<button class="chk" type="button" data-a="done" data-id="${it.id}" aria-label="${it.archived ? 'Rouvrir' : 'Terminer'} : ${esc(it.title)}">${ICON.check}</button>`
     : '';
-  return `<div class="card ${o.late ? 'is-late' : ''} ${it.archived ? 'is-done' : ''}">
+  return `<div class="card ${o.late ? 'is-late' : ''} ${it.archived ? 'is-done' : ''} ${S.justDropped === it.id ? 'just-dropped' : ''}" data-id="${it.id}"${o.dragType ? ` data-dtype="${o.dragType}"` : ''}>
     ${check}
     <button class="card-body" type="button" data-a="edit" data-id="${it.id}"><span class="card-title">${esc(it.title)}</span><span class="card-meta">${meta.join('')}</span></button>
     ${o.extra || ''}</div>`;
@@ -304,7 +369,7 @@ function viewJour() {
   const t = todayKey();
   const tasks = S.items.filter((i) => i.type === 'Tâche');
   const late = tasks.filter((i) => itemDay(i) && itemDay(i) < t && (active(i) || S.sessionDone.has(i.id))).sort(byDayThenTime);
-  const today = tasks.filter((i) => itemDay(i) === t).sort(doneLast);
+  const today = tasks.filter((i) => itemDay(i) === t).sort(todayListSort);
   const rdv = S.items.filter((i) => i.type === 'Agenda' && active(i) && itemDay(i) === t).sort(byDayThenTime);
   const total = late.length + today.length;
   const done = late.filter((i) => i.archived).length + today.filter((i) => i.archived).length;
@@ -320,11 +385,11 @@ function viewJour() {
       <div class="today-stats"><span class="l">${lateOpen} en retard</span><span>${today.filter(active).length} tâche${today.filter(active).length > 1 ? 's' : ''}</span><span>${rdv.length} rendez-vous</span></div>
     </section>
     ${late.length ? `<section class="sec"><h2 class="late">En retard</h2>
-      ${late.map((i) => cardHTML(i, { late: !i.archived, extra: i.archived ? '' : `<button class="icon-mini" type="button" data-a="totoday" data-id="${i.id}" aria-label="Reporter à aujourd’hui : ${esc(i.title)}" title="Reporter à aujourd’hui">${ICON.report}</button>` })).join('')}</section>` : ''}
+      <div class="sortlist" data-sort="late" data-family="jour" data-lock="1">${late.map((i) => cardHTML(i, { late: !i.archived, extra: i.archived ? '' : `<button class="icon-mini" type="button" data-a="totoday" data-id="${i.id}" aria-label="Reporter à aujourd’hui : ${esc(i.title)}" title="Reporter à aujourd’hui">${ICON.report}</button>` })).join('')}</div></section>` : ''}
     <section class="sec"><h2>Rendez-vous</h2>
       ${rdv.length ? rdv.map(rdvHTML).join('') : '<div class="empty">Aucun rendez-vous aujourd’hui</div>'}</section>
     <section class="sec"><div class="sec-h"><h2>Tâches du jour</h2></div>
-      ${today.length ? today.map((i) => cardHTML(i)).join('') : `<div class="empty">Rien de prévu. <button class="btn-sm btn-ghost" type="button" data-a="add" data-date="${t}">${ICON.plusSm} Ajouter</button></div>`}</section>
+      <div class="sortlist" data-sort="today" data-family="jour" data-empty="Rien de prévu aujourd’hui">${today.map((i) => cardHTML(i)).join('')}</div></section>
   </main>`;
 }
 
@@ -344,11 +409,7 @@ function viewSemaine() {
   const start = addDays(weekStart(t), S.weekOffset * 7);
   const days = [...Array(7)].map((_, i) => addDays(start, i));
   const shown = S.items.filter((i) => active(i) && ['Tâche', 'Agenda', 'Projet'].includes(i.type));
-  const per = Object.fromEntries(days.map((d) => [d, shown.filter((i) => itemDay(i) === d).sort((a, b) => {
-    const ta = itemTime(a) || (a.type === 'Agenda' ? '00:00' : '99:99');
-    const tb = itemTime(b) || (b.type === 'Agenda' ? '00:00' : '99:99');
-    return ta.localeCompare(tb) || (a.created || '').localeCompare(b.created || '');
-  })]));
+  const per = Object.fromEntries(days.map((d) => [d, shown.filter((i) => itemDay(i) === d).sort(dayListSort)]));
   const range = `${fmt(days[0], { day: 'numeric' })} – ${fmt(days[6], { day: 'numeric', month: 'long' })}`;
 
   const strip = days.map((d) => {
@@ -357,9 +418,9 @@ function viewSemaine() {
     return `<button type="button" class="${d === t ? 'today' : ''} ${n ? 'has' : ''} ${hasLate ? 'has-late' : ''}" data-a="gocol" data-day="${d}" aria-label="${esc(fmt(d, { weekday: 'long', day: 'numeric' }))}, ${n} élément${n > 1 ? 's' : ''}"><small>${fmt(d, { weekday: 'narrow' })}</small><b>${parseKey(d).getDate()}</b><i></i></button>`;
   }).join('');
 
-  const cols = days.map((d) => `<section class="col ${d === t ? 'today' : ''}" id="col-${d}" aria-label="${esc(fmt(d, { weekday: 'long', day: 'numeric', month: 'long' }))}">
+  const cols = days.map((d) => `<section class="col ${d === t ? 'today' : ''}" id="col-${d}" data-drop aria-label="${esc(fmt(d, { weekday: 'long', day: 'numeric', month: 'long' }))}">
       <div class="col-h"><div><b>${d === t ? "Aujourd'hui" : fmt(d, { weekday: 'long' })}</b><span>${esc(fmt(d, { day: 'numeric', month: 'short' }))}</span></div><span class="count">${per[d].length}</span></div>
-      <div class="col-list" data-day="${d}">${per[d].map((i) => weekCardHTML(i, t)).join('')}</div>
+      <div class="col-list" data-day="${d}" data-sort="day:${d}" data-family="week">${per[d].map((i) => weekCardHTML(i, t)).join('')}</div>
       <button class="col-add" type="button" data-a="add" data-date="${d}">${ICON.plusSm} Ajouter</button>
     </section>`).join('');
 
@@ -399,8 +460,10 @@ function viewPlusTard() {
     const dots = ev.slice(0, 3).map((i) => `<i style="--c:${i.type === 'Agenda' && !i.domain ? 'var(--dot-rdv)' : domColor(i.domain)}"></i>`).join('');
     return `<button type="button" class="mcell ${ev.length ? 'has' : ''} ${k === t ? 'is-today' : ''} ${k === S.selDay ? 'sel' : ''}" data-a="selday" data-day="${k}" aria-label="${esc(fmt(k, { weekday: 'long', day: 'numeric', month: 'long' }))}, ${ev.length} élément${ev.length > 1 ? 's' : ''}" aria-pressed="${k === S.selDay}">${parseKey(k).getDate()}<span class="dots">${dots}</span></button>`;
   }).join('');
-  const sel = inMonth(S.selDay).sort(byDayThenTime);
-  const todo = S.items.filter((i) => i.type === 'Tâche' && active(i) && !i.date).sort((a, b) => (b.created || '').localeCompare(a.created || ''));
+  const sel = inMonth(S.selDay);
+  const selRdv = sel.filter((i) => i.type === 'Agenda').sort(byDayThenTime);
+  const selCards = sel.filter((i) => i.type !== 'Agenda').sort(dayListSort);
+  const todo = S.items.filter((i) => i.type === 'Tâche' && active(i) && !i.date).sort(byOrder(newestFirst));
 
   return `<main class="screen">
     ${header('Vue mois', 'Plus tard', inboxBtn() + settingsBtn())}
@@ -416,10 +479,11 @@ function viewPlusTard() {
     </section>
     <section class="sec"><div class="sec-h"><h2>${esc(fmt(S.selDay, { weekday: 'long', day: 'numeric', month: 'long' }))}</h2>
       <button class="btn-sm btn-ghost" type="button" data-a="add" data-date="${S.selDay}">${ICON.plusSm} Ajouter</button></div>
-      ${sel.length ? sel.map((i) => (i.type === 'Agenda' ? rdvHTML(i) : cardHTML(i, { late: i.type === 'Tâche' && S.selDay < t }))).join('') : '<div class="empty">Rien ce jour-là</div>'}
+      ${selRdv.map(rdvHTML).join('')}
+      <div class="sortlist" data-sort="day:${S.selDay}" data-family="later" data-accept="later,later-p" data-empty="${selRdv.length ? 'Pas d’autre tâche ce jour-là' : 'Rien ce jour-là'}">${selCards.map((i) => cardHTML(i, { late: i.type === 'Tâche' && S.selDay < t, dragType: i.type === 'Tâche' ? 'later' : 'later-p' })).join('')}</div>
     </section>
     <section class="sec"><div class="sec-h"><h2>À planifier · sans date</h2><span class="count">${todo.length}</span></div>
-      ${todo.length ? todo.map((i) => cardHTML(i, { extra: `<button class="btn-sm" type="button" data-a="plan" data-id="${i.id}">${ICON.calSm} Planifier</button>` })).join('') : '<div class="empty">Tout est planifié</div>'}
+      <div class="sortlist" data-sort="todo" data-family="later" data-empty="Tout est planifié">${todo.map((i) => cardHTML(i, { extra: `<button class="btn-sm" type="button" data-a="plan" data-id="${i.id}">${ICON.calSm} Planifier</button>` })).join('')}</div>
     </section>
   </main>`;
 }
@@ -454,13 +518,13 @@ function viewProjets() {
   const f = S.projFilter;
   const order = (p) => PROJ_STATES.indexOf(stateOf(p));
   const list = all.filter((p) => f === 'Tous' || stateOf(p) === f).sort((a, b) =>
-    order(a) - order(b) || (itemDay(a) || '9999').localeCompare(itemDay(b) || '9999') || a.title.localeCompare(b.title, 'fr'));
+    order(a) - order(b) || byOrder((x, y) => (itemDay(x) || '9999').localeCompare(itemDay(y) || '9999') || x.title.localeCompare(y.title, 'fr'))(a, b));
 
   const cards = list.map((p) => {
     const st = projectStats(p);
     const c = domColor(p.domain);
     const s = stateOf(p);
-    return `<button class="proj" type="button" style="--c:${c}" data-a="proj" data-id="${p.id}">
+    return `<button class="proj ${S.justDropped === p.id ? 'just-dropped' : ''}" type="button" style="--c:${c}" data-a="proj" data-id="${p.id}">
       <span class="proj-top">${cat(p.domain || 'Sans catégorie', c)}<span class="state" style="--s:${STATE_COLOR[s]}"><i aria-hidden="true"></i>${s}</span></span>
       <h3>${esc(p.title)}</h3>
       <span class="proj-info"><span>${st.tasks.length ? `${st.done} / ${st.tasks.length} tâches · ${st.pct} %` : 'Aucune tâche liée'}</span><span>${esc(projWhen(p))}</span></span>
@@ -475,14 +539,16 @@ function viewProjets() {
     <div class="filters" role="group" aria-label="Filtrer par état">
       ${['En cours', 'À lancer', 'En attente', 'Tous'].map((k) => `<button class="pill" type="button" data-a="pfilter" data-v="${k}" aria-pressed="${f === k}">${k}<small>${counts[k]}</small></button>`).join('')}
     </div>
-    ${cards || `<div class="empty">Aucun projet ${f === 'Tous' ? '' : '« ' + esc(f) + ' »'}</div>`}
+    ${f === 'Tous'
+      ? (cards || '<div class="empty">Aucun projet</div>')
+      : `<div class="sortlist" data-sort="projects" data-family="projects" data-empty="Aucun projet « ${esc(f)} »">${cards}</div>`}
   </main>`;
 }
 
 function ideaHTML(it) {
   const c = domColor(it.domain);
   const open = S.openIdea === it.id;
-  return `<article class="idea ${open ? 'open' : ''}" style="--c:${c}">
+  return `<article class="idea ${open ? 'open' : ''} ${S.justDropped === it.id ? 'just-dropped' : ''}" style="--c:${c}" data-id="${it.id}">
     <button class="idea-top" type="button" data-a="openidea" data-id="${it.id}" aria-expanded="${open}"><span class="card-title">${esc(it.title)}</span><span class="card-meta">${cat(it.domain || 'Sans catégorie', c)}</span></button>
     ${open ? `<div class="grid2">
       <button class="big light" type="button" data-a="totask" data-id="${it.id}">→ Tâche</button>
@@ -494,25 +560,25 @@ function ideaHTML(it) {
 }
 
 function viewIdees() {
-  const sort = (a, b) => (b.created || '').localeCompare(a.created || '');
+  const sort = byOrder(newestFirst);
   const biz = S.items.filter((i) => i.type === 'Idée business' && active(i)).sort(sort);
   const other = S.items.filter((i) => i.type === 'Idée' && active(i)).sort(sort);
   return `<main class="screen">
     ${header(`${biz.length + other.length} idées en réserve`, 'Idées', inboxBtn() + settingsBtn())}
     ${banner()}
-    <section class="zone" aria-label="Idées business">
+    <section class="zone" data-drop aria-label="Idées business">
       <div class="zone-h"><h2>Idées business</h2><button class="btn-sm" type="button" data-a="add" data-type="Idée business">${ICON.plusSm} Idée</button></div>
-      ${biz.length ? biz.map(ideaHTML).join('') : '<div class="empty">Aucune idée business</div>'}
+      <div class="sortlist" data-sort="ideas:biz" data-family="ideas" data-empty="Aucune idée business">${biz.map(ideaHTML).join('')}</div>
     </section>
-    <section class="zone" aria-label="Autres idées">
+    <section class="zone" data-drop aria-label="Autres idées">
       <div class="zone-h"><h2>Autres idées</h2><button class="btn-sm" type="button" data-a="add" data-type="Idée">${ICON.plusSm} Idée</button></div>
-      ${other.length ? other.map(ideaHTML).join('') : '<div class="empty">Cadeaux, sorties, voyages, envies… Rien pour l’instant.</div>'}
+      <div class="sortlist" data-sort="ideas:other" data-family="ideas" data-empty="Cadeaux, sorties, voyages, envies… Rien pour l’instant.">${other.map(ideaHTML).join('')}</div>
     </section>
   </main>`;
 }
 
 function viewATrier() {
-  const list = S.items.filter((i) => i.type === 'À trier' && active(i)).sort((a, b) => (b.created || '').localeCompare(a.created || ''));
+  const list = S.items.filter((i) => i.type === 'À trier' && active(i)).sort(byOrder(newestFirst));
   if (!list.find((i) => i.id === S.openTri)) S.openTri = list[0] ? list[0].id : null;
   const ago = (iso) => {
     if (!iso) return '';
@@ -522,7 +588,7 @@ function viewATrier() {
   };
   const cards = list.map((i) => {
     const open = i.id === S.openTri;
-    return `<article class="tri ${open ? 'open' : ''}">
+    return `<article class="tri ${open ? 'open' : ''} ${S.justDropped === i.id ? 'just-dropped' : ''}" data-id="${i.id}">
       <button class="tri-top" type="button" data-a="opentri" data-id="${i.id}" aria-expanded="${open}"><b>${esc(i.title)}</b><span>${ago(i.created)}</span></button>
       ${open ? `<span class="tri-q">C’est quoi ?</span>
       <div class="grid2">
@@ -547,7 +613,7 @@ function viewATrier() {
       <input id="inbox-text" data-keep="inbox" type="text" placeholder="Note en vrac…" enterkeyhint="done" maxlength="500">
       <button type="submit" aria-label="Ajouter à trier">${ICON.plusSm}</button>
     </form>
-    ${cards || `<div class="empty" style="padding:36px 16px"><b style="display:block;font-size:18px;color:var(--text);margin-bottom:6px">Tout est rangé</b>Boîte vide, tête légère.</div>`}
+    ${cards ? `<div class="sortlist" data-sort="inbox" data-family="inbox">${cards}</div>` : `<div class="empty" style="padding:36px 16px"><b style="display:block;font-size:18px;color:var(--text);margin-bottom:6px">Tout est rangé</b>Boîte vide, tête légère.</div>`}
   </main>`;
 }
 
@@ -607,6 +673,7 @@ function closeSheet() {
   S.sheet = null;
   document.body.classList.remove('has-sheet');
   document.getElementById('sheet-root').innerHTML = '';
+  bindDnd();
 }
 
 function formSheetHTML() {
@@ -652,7 +719,7 @@ function projectSheetHTML() {
   const st = projectStats(p);
   const c = domColor(p.domain);
   const s = p.projState || 'À lancer';
-  const tasks = st.linked.filter((i) => i.type === 'Tâche').sort((a, b) => (a.archived - b.archived) || byDayThenTime(a, b));
+  const tasks = st.linked.filter((i) => i.type === 'Tâche').sort((a, b) => (a.archived - b.archived) || byOrder(byDayThenTime)(a, b));
   const others = st.linked.filter((i) => i.type !== 'Tâche' && active(i));
   return `<div class="backdrop" data-a="close"></div>
   <section class="sheet" role="dialog" aria-modal="true" aria-label="${esc(p.title)}">
@@ -664,8 +731,8 @@ function projectSheetHTML() {
     </div></div>
     <div class="field" style="--c:${c}"><span>${st.tasks.length ? `${st.done} / ${st.tasks.length} tâches · ${st.pct} %` : 'Aucune tâche liée'}</span>
       <span class="pbar" style="--c:${c}"><i style="width:${Math.max(st.pct, 2)}%"></i>${st.marks.map((mk) => `<em class="${mk.done ? 'done' : ''}" style="left:${mk.left}%"></em>`).join('')}</span></div>
-    <div class="mini-list">${tasks.map((i) => cardHTML(i, { showProj: false, showDay: true })).join('')}
-      ${others.map((i) => cardHTML(i, { showProj: false, showDay: true })).join('')}</div>
+    <div class="sortlist mini-list" data-sort="proj:${p.id}" data-family="projtasks" data-empty="Aucune tâche pour l’instant">${tasks.map((i) => cardHTML(i, { showProj: false, showDay: true })).join('')}</div>
+    ${others.length ? `<div class="mini-list">${others.map((i) => cardHTML(i, { showProj: false, showDay: true })).join('')}</div>` : ''}
     <form class="inbox-input" id="proj-add-form" data-id="${p.id}" autocomplete="off">
       <label class="sr" for="proj-add">Nouvelle tâche du projet</label>
       <input id="proj-add" data-keep="projadd" type="text" placeholder="Ajouter une tâche au projet…" maxlength="500" enterkeyhint="done">
@@ -732,6 +799,7 @@ function renderSheet() {
     root.innerHTML = k === 'project' ? projectSheetHTML() : k === 'plan' ? planSheetHTML() : k === 'settings' ? settingsSheetHTML() : formSheetHTML();
   });
   if (!root.innerHTML.trim()) closeSheet();
+  bindDnd();
 }
 
 async function submitForm() {
@@ -820,8 +888,8 @@ function render() {
   app.classList.toggle('no-anim', !fresh);
   keep(app, () => { app.innerHTML = v() + tabbar(); });
   if (S.view === 'semaine') setupWeek(keepScrollX);
-  else unbindWeekDnd();
   if (S.sheet && ['project', 'plan', 'settings'].includes(S.sheet.kind)) renderSheet();
+  bindDnd();
 }
 
 function setupWeek(scrollX) {
@@ -834,28 +902,35 @@ function setupWeek(scrollX) {
     else wk.scrollLeft = 0;
   }
   S.scrollWeek = false;
-  bindWeekDnd();
 }
 
-/* ---------- Glisser-déposer de la semaine (dnd-kit) ----------
-   Au doigt : appui long de 200 ms pour attraper une carte ; un geste plus rapide fait défiler.
-   À la souris : on attrape dès 4 px de mouvement.
-   Un aperçu de la carte suit le doigt (calque dnd-kit) ; la colonne et la pastille du jour visé s'éclairent.
-   Au lâcher, l'aperçu glisse jusqu'à sa nouvelle place, puis la date part vers Notion. */
-const DND = { manager: null, feedback: null, overlay: null, entities: [], from: null, lit: [], pending: null };
+/* ---------- Glisser-déposer partout (dnd-kit) ----------
+   Toute liste marquée data-sort="<liste>" se réordonne : au doigt, appui long de 200 ms pour attraper une carte
+   (un geste plus rapide fait défiler la page) ; à la souris, dès 4 px de mouvement.
+   Un aperçu de la carte suit le doigt ; les autres cartes s'écartent ; la liste visée s'éclaire.
+   Au lâcher, le nouvel ordre (colonne Notion « Ordre ») et, si besoin, le changement de jour ou de section partent vers Notion.
+   data-family : les listes d'une même famille échangent leurs cartes (ex. les 7 jours, les 2 sections d'idées).
+   data-lock   : liste dont on peut sortir des cartes, mais où l'on ne dépose pas (ex. « En retard »).
+   data-accept / data-dtype : restreindre ce qu'une liste accepte (ex. « À planifier » n'accepte que des tâches). */
+const DND = { manager: null, feedback: null, overlay: null, entities: [], fromGroup: null, lit: [], pending: null };
 if (location.hostname === 'localhost') window.__DND = DND; // aide aux tests locaux
+
+const NO_DRAG = '.chk, .icon-mini, .btn-sm, .big, .link-btn, input, select, textarea, a, [data-nodrag]';
 
 function dndManager() {
   if (DND.manager || !window.DndKit) return DND.manager;
   const K = window.DndKit;
   const C = K.PointerActivationConstraints;
-  const titleOf = (src) => { const it = src && byId(src.data.id); return it ? it.title : 'la tâche'; };
-  const dayLabel = (tgt) => (tgt ? fmt(tgt.data.day, { weekday: 'long', day: 'numeric', month: 'long' }) : '');
+  const titleOf = (src) => { const it = src && byId(src.data.id); return it ? it.title : 'la carte'; };
   const m = new K.DragDropManager({
     sensors: [K.PointerSensor.configure({
       activationConstraints(event) {
         if (event.pointerType === 'mouse') return [new C.Distance({ value: 4 })];
         return [new C.Delay({ value: 200, tolerance: 8 })];
+      },
+      // on n'attrape pas une carte par sa case à cocher ou ses petits boutons
+      preventActivation(event) {
+        return event.target instanceof Element && !!event.target.closest(NO_DRAG);
       }
     })],
     plugins: [
@@ -864,17 +939,16 @@ function dndManager() {
       K.Cursor,
       K.PreventSelection,
       K.Accessibility.configure({
-        screenReaderInstructions: { draggable: 'Appui long puis glisser vers un autre jour. Ou ouvrir la tâche pour changer sa date.' },
+        screenReaderInstructions: { draggable: 'Appui long puis glisser pour changer la place de la carte. Ou ouvrir la carte pour la modifier.' },
         announcements: {
           dragstart: (e) => `${titleOf(e.operation.source)} attrapée.`,
-          dragover: (e) => (e.operation.target ? `Au-dessus de ${dayLabel(e.operation.target)}.` : undefined),
-          dragend: (e) => (e.canceled || !e.operation.target ? 'Déplacement annulé.' : `${titleOf(e.operation.source)} déposée ${dayLabel(e.operation.target)}.`)
+          dragover: () => undefined,
+          dragend: (e) => (e.canceled ? 'Déplacement annulé.' : `${titleOf(e.operation.source)} déposée.`)
         }
       })
     ]
   });
-  DND.feedback = m.plugins.find((p) => p instanceof K.Feedback) || null;
-  // Calque d'aperçu : dnd-kit le place sous le doigt pendant le glisser.
+  DND.feedback = m.plugins.find((pl) => pl instanceof K.Feedback) || null;
   const ov = document.createElement('div');
   ov.className = 'drag-overlay';
   ov.setAttribute('data-dnd-overlay', '');
@@ -889,25 +963,51 @@ function dndManager() {
   return m;
 }
 
-function unbindWeekDnd() {
+function unbindDnd() {
   DND.entities.forEach((e) => e.destroy());
   DND.entities = [];
 }
 
-function bindWeekDnd() {
-  unbindWeekDnd();
+const listEl = (group) => [...document.querySelectorAll('[data-sort]')].find((el) => el.dataset.sort === group) || null;
+const dropBox = (list) => (list && (list.closest('[data-drop]') || list)) || null;
+const listIds = (list) => (list ? [...list.children].map((el) => el.dataset.id).filter(Boolean) : []);
+
+function bindDnd() {
+  if (S.dragging || S.dropping) return;
+  unbindDnd();
   const m = dndManager();
   if (!m) return;
   const K = window.DndKit;
-  document.querySelectorAll('#week .wcard[data-id]').forEach((el) => {
-    DND.entities.push(new K.Draggable({ id: 'card:' + el.dataset.id, element: el, data: { id: el.dataset.id, day: el.closest('.col-list').dataset.day } }, m));
+  document.querySelectorAll('#app [data-sort], #sheet-root [data-sort]').forEach((list) => {
+    const group = list.dataset.sort;
+    const family = list.dataset.family || group;
+    const accept = (list.dataset.accept || family).split(',');
+    const lock = list.dataset.lock === '1';
+    const items = [...list.children].filter((el) => el.dataset.id);
+    items.forEach((el, index) => {
+      el.classList.add('drag-item');
+      const type = el.dataset.dtype || family;
+      DND.entities.push(new K.Sortable({
+        id: group + '|' + el.dataset.id, index, group, element: el, type, accept,
+        data: { id: el.dataset.id, group, family },
+        disabled: lock ? { droppable: true } : false,
+        transition: { duration: 200, easing: 'cubic-bezier(.2,.8,.2,1)' }
+      }, m));
+    });
+    if (!lock) {
+      // la liste entière accepte aussi un dépôt (liste vide, ou sous la dernière carte)
+      DND.entities.push(new K.Droppable({
+        id: 'list:' + group, element: dropBox(list), accept, collisionPriority: 1,
+        data: { group, family, kind: 'list' }, collisionDetector: K.pointerIntersection
+      }, m));
+    }
   });
-  document.querySelectorAll('#week .col').forEach((el) => {
-    const day = el.querySelector('.col-list').dataset.day;
-    DND.entities.push(new K.Droppable({ id: 'col:' + day, element: el, data: { day, kind: 'col' }, collisionDetector: K.pointerIntersection }, m));
-  });
-  document.querySelectorAll('.strip button[data-day]').forEach((el) => {
-    DND.entities.push(new K.Droppable({ id: 'pill:' + el.dataset.day, element: el, data: { day: el.dataset.day, kind: 'pill' }, collisionDetector: K.pointerIntersection }, m));
+  // Semaine : les pastilles des jours acceptent aussi une carte (pour un jour hors de l'écran)
+  document.querySelectorAll('#app .strip button[data-day]').forEach((el) => {
+    DND.entities.push(new K.Droppable({
+      id: 'pill:' + el.dataset.day, element: el, accept: ['week'], collisionPriority: 3,
+      data: { group: 'day:' + el.dataset.day, family: 'week', kind: 'pill' }, collisionDetector: K.pointerIntersection
+    }, m));
   });
 }
 
@@ -915,8 +1015,9 @@ function onDndBefore(e) {
   const el = e.operation.source && e.operation.source.element;
   if (!el || !DND.overlay) return;
   const card = el.cloneNode(true);
-  ['data-a', 'tabindex', 'id', 'role', 'aria-label', 'aria-describedby', 'aria-roledescription', 'aria-pressed', 'aria-disabled'].forEach((a) => card.removeAttribute(a));
-  card.classList.remove('just-dropped');
+  ['data-a', 'data-id', 'tabindex', 'id', 'role', 'aria-label', 'aria-describedby', 'aria-roledescription', 'aria-pressed', 'aria-disabled', 'aria-expanded']
+    .forEach((a) => card.removeAttribute(a));
+  card.classList.remove('just-dropped', 'is-source');
   card.classList.add('lifted');
   DND.overlay.replaceChildren(card);
   if (DND.feedback) {
@@ -928,53 +1029,108 @@ function onDndBefore(e) {
 function onDndStart(e) {
   const src = e.operation.source;
   S.dragging = true;
-  DND.from = src ? src.data.day : null;
+  DND.fromGroup = src && src.sortable ? src.sortable.initialGroup : null;
   document.body.classList.add('dragging');
   if (src && src.element) src.element.classList.add('is-source');
   if (navigator.vibrate) navigator.vibrate(12);
 }
 
-function lightUp(day) {
+function lightUp(group) {
   DND.lit.forEach((el) => el.classList.remove('drop-target'));
   DND.lit = [];
-  if (!day || day === DND.from) return;
-  const col = document.getElementById('col-' + day);
-  const pill = document.querySelector(`.strip button[data-day="${day}"]`);
-  [col, pill].forEach((el) => { if (el) { el.classList.add('drop-target'); DND.lit.push(el); } });
+  if (!group || group === DND.fromGroup) return;
+  const box = dropBox(listEl(group));
+  const pill = group.startsWith('day:') ? document.querySelector(`#app .strip button[data-day="${group.slice(4)}"]`) : null;
+  [box, pill].forEach((el) => { if (el) { el.classList.add('drop-target'); DND.lit.push(el); } });
 }
 
 function onDndOver(e) {
+  const K = window.DndKit;
+  const src = e.operation.source;
   const tgt = e.operation.target;
-  lightUp(tgt ? tgt.data.day : null);
-  // au-dessus des pastilles, l'aperçu rétrécit pour laisser voir le jour visé
-  if (DND.overlay) DND.overlay.classList.toggle('over-pill', !!(tgt && tgt.data.kind === 'pill'));
+  let group = null;
+  if (tgt && K.isSortable(tgt)) group = tgt.sortable.group;
+  else if (tgt) group = tgt.data.group;
+  // Au-dessus d'une liste (vide ou sous sa dernière carte) d'une autre liste : la carte y prend place tout de suite.
+  if (tgt && !K.isSortable(tgt) && tgt.data.kind === 'list' && src && K.isSortable(src) && src.sortable.group !== tgt.data.group) {
+    const list = listEl(tgt.data.group);
+    if (list && src.element) {
+      const oldGroup = src.sortable.group;
+      const oldIndex = src.sortable.index;
+      const sorts = DND.entities.filter((x) => x instanceof K.Sortable);
+      sorts.filter((x) => x.group === oldGroup && x.index > oldIndex).forEach((x) => { x.index -= 1; });
+      const count = sorts.filter((x) => x.group === tgt.data.group && x !== src.sortable).length;
+      list.appendChild(src.element);
+      src.sortable.group = tgt.data.group;
+      src.sortable.index = count;
+    }
+  }
+  lightUp(group);
+  if (DND.overlay) DND.overlay.classList.toggle('over-pill', !!(tgt && tgt.data && tgt.data.kind === 'pill'));
 }
 
 function onDndEnd(e) {
+  const K = window.DndKit;
   const src = e.operation.source;
   const tgt = e.operation.target;
-  const id = src && src.data.id;
-  const to = tgt && tgt.data.day;
-  const moved = !e.canceled && id && to && to !== DND.from;
   lightUp(null);
   if (DND.overlay) DND.overlay.classList.remove('over-pill');
   document.body.classList.remove('dragging');
   S.dragging = false;
   S.justDragged = Date.now();
+  DND.pending = null;
 
-  if (moved && src.element) {
-    // La carte prend tout de suite sa nouvelle place : l'aperçu glisse jusqu'à elle.
-    const list = document.querySelector(`#week .col-list[data-day="${to}"]`);
-    const colBox = list && list.closest('.col').getBoundingClientRect();
-    const visible = colBox && colBox.right > 0 && colBox.left < window.innerWidth;
-    if (list) list.appendChild(src.element);
-    if (DND.feedback && (!visible || tgt.data.kind === 'pill')) DND.feedback.dropAnimation = null; // jour hors écran : pas de vol
-    DND.pending = { id, to };
+  if (!e.canceled && src && K.isSortable(src) && src.element) {
+    const id = src.data.id;
+    const fromG = src.sortable.initialGroup;
+    let toG = src.sortable.group;
+    const moved = toG !== fromG || src.sortable.index !== src.sortable.initialIndex;
+    if (tgt && tgt.data && tgt.data.kind === 'pill' && tgt.data.group !== fromG) {
+      // déposée sur une pastille de jour : la carte va à la fin de ce jour
+      toG = tgt.data.group;
+      const list = listEl(toG);
+      const box = list && list.getBoundingClientRect();
+      const visible = box && box.right > 0 && box.left < window.innerWidth;
+      if (list) list.appendChild(src.element);
+      if (DND.feedback && !visible) DND.feedback.dropAnimation = null;
+      DND.pending = { id, fromG, toG, ids: listIds(list).concat(list ? [] : [id]) };
+    } else if (moved) {
+      DND.pending = { id, fromG, toG, ids: listIds(listEl(toG)) };
+    } else {
+      src.element.classList.remove('is-source');
+    }
   } else if (src && src.element) {
     src.element.classList.remove('is-source');
   }
   S.dropping = true;
-  setTimeout(finishDrop, 260); // laisse l'animation se terminer
+  setTimeout(finishDrop, 260); // laisse l'aperçu glisser jusqu'à sa place
+}
+
+// Ce que change un dépôt : jour, section, et toujours l'ordre de la liste d'arrivée.
+function dropChanges(p) {
+  const it = byId(p.id);
+  if (!it) return { changes: [], text: '' };
+  const map = new Map();
+  const add = (id, patch) => map.set(id, { ...(map.get(id) || {}), ...patch });
+  let text = 'Ordre enregistré';
+  if (p.fromG !== p.toG) {
+    const [kind, val] = p.toG.split(':');
+    if (kind === 'day') {
+      add(it.id, { date: it.date ? shiftDate(it.date, val) : { start: val, end: null } });
+      text = 'Déplacé au ' + fmt(val, { weekday: 'long', day: 'numeric' });
+    } else if (p.toG === 'today') {
+      add(it.id, { date: it.date ? shiftDate(it.date, todayKey()) : { start: todayKey(), end: null } });
+      text = 'Remis à aujourd’hui';
+    } else if (p.toG === 'todo') {
+      add(it.id, { date: null });
+      text = 'Rangé dans « À planifier »';
+    } else if (kind === 'ideas') {
+      add(it.id, { type: val === 'biz' ? 'Idée business' : 'Idée' });
+      text = val === 'biz' ? 'Rangée dans Idées business' : 'Rangée dans Autres idées';
+    }
+  }
+  orderPatches(p.ids, p.id).forEach((o) => add(o.id, { order: o.order }));
+  return { changes: [...map].map(([id, patch]) => ({ id, patch })), text };
 }
 
 function finishDrop() {
@@ -983,13 +1139,9 @@ function finishDrop() {
   DND.pending = null;
   if (DND.overlay) DND.overlay.replaceChildren();
   if (p) {
-    const it = byId(p.id);
     S.justDropped = p.id;
-    if (it && it.date) {
-      update(p.id, { date: shiftDate(it.date, p.to) })
-        .then(() => toast('Déplacé au ' + fmt(p.to, { weekday: 'long', day: 'numeric' })))
-        .catch(() => {});
-    } else render();
+    const { changes, text } = dropChanges(p);
+    updateMany(changes, text);
     setTimeout(() => { S.justDropped = null; }, 700);
   } else if (S.renderLater) render();
   S.renderLater = false;
@@ -1048,6 +1200,7 @@ async function sortItem(id, to) {
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-a]');
   if (!el) return;
+  if (Date.now() - S.justDragged < 450) return; // pas de clic juste après un glisser-déposer
   const a = el.dataset.a;
   const id = el.dataset.id;
   switch (a) {

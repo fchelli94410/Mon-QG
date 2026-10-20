@@ -15,7 +15,8 @@ export const P = {
   archived: 'Archivé',
   projState: 'État projet',
   parent: 'Projet parent',
-  linked: 'Éléments liés'
+  linked: 'Éléments liés',
+  order: 'Ordre' // position dans les listes de l'appli (nombre)
 };
 
 export const TYPES = ['Tâche', 'À trier', 'Agenda', 'Projet', 'Idée business', 'Idée'];
@@ -148,6 +149,7 @@ export function toItem(page) {
     projState: (p[P.projState] && p[P.projState].select && p[P.projState].select.name) || '',
     parent: rel(P.parent)[0] || null,
     linked: rel(P.linked),
+    order: (p[P.order] && typeof p[P.order].number === 'number') ? p[P.order].number : null,
     created: page.created_time,
     edited: page.last_edited_time
   };
@@ -180,10 +182,43 @@ export function toProperties(input) {
     if (input.projState && !PROJ_STATES.includes(input.projState)) throw Object.assign(new Error('État inconnu.'), { status: 400 });
     props[P.projState] = { select: input.projState ? { name: input.projState } : null };
   }
+  if ('order' in input) {
+    const n = input.order;
+    if (n !== null && !Number.isFinite(n)) throw Object.assign(new Error('Ordre invalide.'), { status: 400 });
+    props[P.order] = { number: n === null ? null : Math.round(n * 1000) / 1000 };
+  }
   if ('parent' in input) {
     const id = input.parent;
     if (id && !/^[0-9a-f-]{32,36}$/i.test(id)) throw Object.assign(new Error('Projet invalide.'), { status: 400 });
     props[P.parent] = { relation: id ? [{ id }] : [] };
   }
   return props;
+}
+
+// ---------- Modifier une fiche (avec contrôle : uniquement la base du QG) ----------
+export const EDITABLE = ['title', 'type', 'domain', 'date', 'archived', 'projState', 'parent', 'order'];
+const cleanId = (id) => String(id || '').replace(/-/g, '').toLowerCase();
+
+export async function patchItem(id, body) {
+  if (!/^[0-9a-f-]{32,36}$/i.test(String(id))) throw Object.assign(new Error('Identifiant invalide.'), { status: 400 });
+  const input = {};
+  for (const k of EDITABLE) if (body && k in body) input[k] = body[k];
+  if (!Object.keys(input).length) throw Object.assign(new Error('Rien à modifier.'), { status: 400 });
+  const properties = toProperties(input);
+  const { dataSource } = config();
+  const current = await notion('pages/' + id);
+  const parentDs = current.parent && (current.parent.data_source_id || '');
+  if (cleanId(parentDs) !== cleanId(dataSource)) throw Object.assign(new Error('Cette fiche n’appartient pas à la base du QG.'), { status: 403, scope: true });
+  const updated = await notion('pages/' + id, 'PATCH', { properties });
+  return toItem(updated);
+}
+
+// Réessaie quand Notion demande de ralentir (429).
+export async function withRetry(fn, tries = 4) {
+  for (let i = 0; ; i++) {
+    try { return await fn(); } catch (e) {
+      if (e.status !== 429 || i >= tries - 1) throw e;
+      await new Promise((r) => setTimeout(r, 600 * (i + 1)));
+    }
+  }
 }
