@@ -440,7 +440,7 @@ function weekCardHTML(it, t) {
 
 function viewSemaine() {
   const t = todayKey();
-  const start = addDays(weekStart(t), S.weekOffset * 7);
+  const start = addDays(t, S.weekOffset * 7); // 7 jours glissants à partir d'aujourd'hui
   const days = [...Array(7)].map((_, i) => addDays(start, i));
   const shown = S.items.filter((i) => active(i) && ['Tâche', 'Agenda', 'Projet'].includes(i.type));
   const per = Object.fromEntries(days.map((d) => [d, shown.filter((i) => itemDay(i) === d).sort(dayListSort)]));
@@ -459,13 +459,13 @@ function viewSemaine() {
     </section>`).join('');
 
   const nav = `<div class="week-nav">
-      ${S.weekOffset ? '<button class="btn-sm" type="button" data-a="week" data-n="0">Cette semaine</button>' : ''}
-      <button class="icon-btn sm" type="button" data-a="week" data-n="-1" aria-label="Semaine précédente">${ICON.left}</button>
-      <button class="icon-btn sm" type="button" data-a="week" data-n="1" aria-label="Semaine suivante">${ICON.right}</button></div>`;
+      ${S.weekOffset ? '<button class="btn-sm" type="button" data-a="week" data-n="0">Aujourd’hui</button>' : ''}
+      <button class="icon-btn sm" type="button" data-a="week" data-n="-1" aria-label="7 jours précédents">${ICON.left}</button>
+      <button class="icon-btn sm" type="button" data-a="week" data-n="1" aria-label="7 jours suivants">${ICON.right}</button></div>`;
 
   return `<main class="screen wide">
     <div class="pad" style="display:flex;flex-direction:column;gap:14px">
-      ${header(range, 'Semaine ' + isoWeek(start), nav)}
+      ${header(range, S.weekOffset ? 'Semaine' : '7 prochains jours', nav)}
       ${banner()}
       <div class="strip">${strip}</div>
     </div>

@@ -1,6 +1,6 @@
 // Garde l'appli disponible même avec un réseau faible.
 // Les données (/api) passent toujours par internet, jamais par le cache.
-const VERSION = 'qg-v8';
+const VERSION = 'qg-v9';
 const SHELL = ['/', '/index.html', '/app.css?v=5', '/app.js?v=6', '/vendor/dndkit.min.js?v=0.5.1-s', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
