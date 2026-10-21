@@ -434,8 +434,12 @@ function weekCardHTML(it, t) {
   const c = it.type === 'Agenda' && !it.domain ? 'var(--dot-rdv)' : domColor(it.domain);
   const p = it.type !== 'Projet' ? projectOf(it) : null;
   const extra = [it.type === 'Tâche' && itemTime(it) ? itemTime(it) : '', p ? p.title : ''].filter(Boolean).map((x) => `<span>${esc(x)}</span>`).join('');
+  const canCheck = (it.type === 'Tâche' || it.type === 'Agenda') && it.source !== 'outlook';
+  const check = canCheck
+    ? `<button class="chk" type="button" data-a="done" data-id="${it.id}" aria-label="Terminer : ${esc(it.title)}">${ICON.check}</button>`
+    : '';
   return `<div class="wcard ${late ? 'is-late' : ''} ${S.justDropped === it.id ? 'just-dropped' : ''}" data-id="${it.id}" data-a="edit" role="button" tabindex="0" aria-label="${esc(it.title)}">
-    <span class="card-title">${esc(it.title)}</span><span class="card-meta">${cat(label, c)}${late ? '<span class="late-txt">En retard</span>' : ''}${durBadge(it)}${extra}</span></div>`;
+    ${check}<div class="wbody"><span class="card-title">${esc(it.title)}</span><span class="card-meta">${cat(label, c)}${late ? '<span class="late-txt">En retard</span>' : ''}${durBadge(it)}${extra}</span></div></div>`;
 }
 
 function viewSemaine() {

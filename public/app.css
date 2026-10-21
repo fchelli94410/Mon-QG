@@ -248,11 +248,13 @@ h1 { margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.02em; line
   display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: var(--muted);
 }
 .wcard {
-  position: relative; padding: 12px; border-radius: 16px; display: flex; flex-direction: column; gap: 5px;
+  position: relative; padding: 12px; border-radius: 16px; display: flex; flex-direction: row; align-items: center; gap: 10px;
   background: var(--card); box-shadow: var(--shadow);
   touch-action: pan-x pan-y; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
   transition: transform .2s ease, opacity .2s ease; cursor: grab;
 }
+.wcard .wbody { display: flex; flex-direction: column; gap: 5px; min-width: 0; flex: 1; }
+.wcard .chk { width: 24px; height: 24px; }
 .wcard .card-title { font-size: 14px; }
 .wcard .card-meta { font-size: 11px; }
 .dur { padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--muted) 14%, transparent); color: var(--text, inherit); font-weight: 700; white-space: nowrap; }
