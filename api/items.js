@@ -1,6 +1,7 @@
-// GET  /api/items  -> toutes les fiches de la base (projets, tâches, idées, agenda, à trier)
+// GET  /api/items  -> toutes les fiches de la base (projets, tâches, idées, agenda, à trier) + Outlook
 // POST /api/items  -> crée une nouvelle fiche
 import { config, guard, send, readBody, notion, notionErrorMessage, toItem, toProperties } from './_lib.js';
+import { getMsEvents, getMsToken } from './_ms.js';
 
 export default async function handler(req, res) {
   if (!guard(req, res)) return;
@@ -21,6 +22,16 @@ export default async function handler(req, res) {
         }
         cursor = page.has_more ? page.next_cursor : null;
       } while (cursor && ++guardLoops < 50);
+
+      // Ajouter les événements Outlook si le token est fourni
+      const msToken = req.query.ms_token || null;
+      if (msToken) {
+        const now = new Date();
+        const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 jours
+        const msEvents = await getMsEvents(msToken, now.toISOString(), end.toISOString());
+        items.push(...msEvents);
+      }
+
       return send(res, 200, { items, at: new Date().toISOString() });
     }
 
