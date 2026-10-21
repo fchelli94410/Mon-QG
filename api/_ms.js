@@ -57,7 +57,7 @@ export async function getMsEvents(accessToken, startDate, endDate) {
       domain: '',
       date: { start: utc(e.start), end: e.end ? utc(e.end) : null },
       archived: false,
-      duration: e.isReminderOn && e.reminderMinutesBeforeStart ? e.reminderMinutesBeforeStart : null,
+      duration: null, // calculée depuis début/fin
       source: 'outlook'
     }));
   } catch { return []; }

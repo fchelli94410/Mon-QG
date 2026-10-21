@@ -359,12 +359,22 @@ function banner() {
   return `<div class="banner"><span>${esc(S.error)}</span><button class="btn-sm" type="button" data-a="sync">Réessayer</button></div>`;
 }
 
+// durée prévue : celle choisie, sinon calculée depuis l'heure de fin
+function durOf(it) {
+  if (it.duration) return it.duration;
+  const d = it.date;
+  if (!d || !d.start || !d.end || d.start.length <= 10) return null;
+  const m = Math.round((new Date(d.end) - new Date(d.start)) / 60000);
+  return m > 0 && m < 24 * 60 ? m : null;
+}
+const durBadge = (it) => { const m = durOf(it); return m ? `<span class="dur">⏱ ${esc(fmtDuration(m))}</span>` : ''; };
+
 function cardHTML(it, o = {}) {
   const meta = [cat(it.domain || 'Sans catégorie', domColor(it.domain))];
   if (o.late) meta.push(`<span class="late-txt">${lateText(it)}</span>`);
   if (o.showDay && itemDay(it)) meta.push(`<span>${esc(fmtShort(itemDay(it)))}</span>`);
   if (itemTime(it)) meta.push(`<span>${itemTime(it)}</span>`);
-  if (it.duration) meta.push(`<span>${esc(fmtDuration(it.duration))}</span>`);
+  if (durOf(it)) meta.push(durBadge(it));
   const p = o.showProj === false ? null : projectOf(it);
   if (p) meta.push(`<span>${esc(p.title)}</span>`);
   const check = it.type === 'Tâche' || o.forceCheck
@@ -381,7 +391,7 @@ function rdvHTML(it) {
   const e = itemEndTime(it);
   const p = projectOf(it);
   return `<div class="rdv"><div class="rdv-time">${t || 'Journée'}${e ? `<span>${e}</span>` : ''}</div>
-    <button class="rdv-card" type="button" data-a="edit" data-id="${it.id}"><b>${esc(it.title)}</b><span class="card-meta">${cat(it.domain || 'Agenda', it.domain ? domColor(it.domain) : 'var(--dot-rdv)')}${p ? `<span>${esc(p.title)}</span>` : ''}</span></button></div>`;
+    <button class="rdv-card" type="button" data-a="edit" data-id="${it.id}"><b>${esc(it.title)}</b><span class="card-meta">${cat(it.domain || 'Agenda', it.domain ? domColor(it.domain) : 'var(--dot-rdv)')}${durBadge(it)}${p ? `<span>${esc(p.title)}</span>` : ''}</span></button></div>`;
 }
 
 /* =========================================================
@@ -397,7 +407,7 @@ function viewJour() {
   const done = late.filter((i) => i.archived).length + today.filter((i) => i.archived).length;
   const lateOpen = late.filter(active).length;
   const pct = total ? Math.round((done / total) * 100) : 0;
-  const totalDur = today.reduce((sum, i) => sum + (i.duration || 0), 0);
+  const totalDur = today.reduce((sum, i) => sum + (durOf(i) || 0), 0);
   const durStr = totalDur ? ` · ${fmtDuration(totalDur)} prévues` : '';
 
   return `<main class="screen">
@@ -425,7 +435,7 @@ function weekCardHTML(it, t) {
   const p = it.type !== 'Projet' ? projectOf(it) : null;
   const extra = [it.type === 'Tâche' && itemTime(it) ? itemTime(it) : '', p ? p.title : ''].filter(Boolean).map((x) => `<span>${esc(x)}</span>`).join('');
   return `<div class="wcard ${late ? 'is-late' : ''} ${S.justDropped === it.id ? 'just-dropped' : ''}" data-id="${it.id}" data-a="edit" role="button" tabindex="0" aria-label="${esc(it.title)}">
-    <span class="card-title">${esc(it.title)}</span><span class="card-meta">${cat(label, c)}${late ? '<span class="late-txt">En retard</span>' : ''}${extra}</span></div>`;
+    <span class="card-title">${esc(it.title)}</span><span class="card-meta">${cat(label, c)}${late ? '<span class="late-txt">En retard</span>' : ''}${durBadge(it)}${extra}</span></div>`;
 }
 
 function viewSemaine() {

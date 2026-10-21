@@ -255,6 +255,7 @@ h1 { margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.02em; line
 }
 .wcard .card-title { font-size: 14px; }
 .wcard .card-meta { font-size: 11px; }
+.dur { padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--muted) 14%, transparent); color: var(--text, inherit); font-weight: 700; white-space: nowrap; }
 .wcard:active { transform: scale(.97); }
 .col-add { height: 44px; border-radius: 14px; border: 0; background: transparent; color: var(--muted); font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; padding: 0 8px; }
 
