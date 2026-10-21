@@ -179,9 +179,20 @@ async function load(silent) {
   if (!silent) render();
   try {
     const msToken = localStorage.getItem('ms_token');
-    const path = msToken ? `/api/items?ms_token=${encodeURIComponent(msToken)}` : '/api/items';
+    const msRef = localStorage.getItem('ms_refresh');
+    const q = new URLSearchParams();
+    if (msToken) q.set('ms_token', msToken);
+    if (msRef) q.set('ms_refresh', msRef);
+    const path = q.toString() ? `/api/items?${q}` : '/api/items';
     const d = await api(path);
     S.items = d.items;
+    try {
+      if (d.ms_tokens) {
+        localStorage.setItem('ms_token', d.ms_tokens.accessToken);
+        if (d.ms_tokens.refreshToken) localStorage.setItem('ms_refresh', d.ms_tokens.refreshToken);
+      }
+      if (d.ms_expired) { localStorage.removeItem('ms_token'); localStorage.removeItem('ms_refresh'); toast('Outlook déconnecté, reconnecte-le dans Réglages', { err: true }); }
+    } catch { /* rien */ }
     S.error = null;
     S.syncedAt = new Date();
     S.needLogin = false;
@@ -1241,11 +1252,12 @@ document.addEventListener('click', (e) => {
     case 'ms_login': {
       fetch('/api/auth/login').then(r => r.json()).then(d => {
         if (d.authUrl) window.location.href = d.authUrl;
+        else toast('Outlook : ' + (d.error || 'configuration manquante'), { err: true });
       }).catch(() => toast('Erreur connexion Outlook', { err: true }));
       break;
     }
     case 'ms_logout': {
-      try { localStorage.removeItem('ms_token'); } catch { /* rien */ }
+      try { localStorage.removeItem('ms_token'); localStorage.removeItem('ms_refresh'); } catch { /* rien */ }
       renderSheet();
       toast('Outlook déconnecté');
       break;

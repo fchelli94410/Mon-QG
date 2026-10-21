@@ -1,7 +1,7 @@
 // GET  /api/items  -> toutes les fiches de la base (projets, tâches, idées, agenda, à trier) + Outlook
 // POST /api/items  -> crée une nouvelle fiche
 import { config, guard, send, readBody, notion, notionErrorMessage, toItem, toProperties } from './_lib.js';
-import { getMsEvents, getMsToken } from './_ms.js';
+import { getMsEventsAuto } from './_ms.js';
 
 export default async function handler(req, res) {
   if (!guard(req, res)) return;
@@ -25,14 +25,21 @@ export default async function handler(req, res) {
 
       // Ajouter les événements Outlook si le token est fourni
       const msToken = req.query.ms_token || null;
-      if (msToken) {
+      const msRefresh = req.query.ms_refresh || null;
+      let ms = null;
+      if (msToken || msRefresh) {
         const now = new Date();
         const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 jours
-        const msEvents = await getMsEvents(msToken, now.toISOString(), end.toISOString());
-        items.push(...msEvents);
+        ms = await getMsEventsAuto(msToken, msRefresh, now.toISOString(), end.toISOString());
+        items.push(...ms.events);
       }
 
-      return send(res, 200, { items, at: new Date().toISOString() });
+      return send(res, 200, {
+        items,
+        at: new Date().toISOString(),
+        ...(ms?.tokens ? { ms_tokens: ms.tokens } : {}),
+        ...(ms?.expired ? { ms_expired: true } : {})
+      });
     }
 
     if (req.method === 'POST') {
