@@ -178,7 +178,9 @@ async function load(silent) {
   S.syncing = true;
   if (!silent) render();
   try {
-    const d = await api('/api/items');
+    const msToken = localStorage.getItem('ms_token');
+    const path = msToken ? `/api/items?ms_token=${encodeURIComponent(msToken)}` : '/api/items';
+    const d = await api(path);
     S.items = d.items;
     S.error = null;
     S.syncedAt = new Date();
@@ -799,6 +801,11 @@ function settingsSheetHTML() {
       <p class="note">Dernière mise à jour : ${at}.</p>
       <button class="link-btn" type="button" data-a="sync">${S.syncing ? ICON.sync.replace('<svg', '<svg class="spin"') : ICON.sync} Actualiser maintenant</button>
     </div>
+    <div class="field"><span>Outlook</span>
+      <p class="note">${localStorage.getItem('ms_token') ? '✓ Connecté' : 'Non connecté'}.</p>
+      <button class="link-btn" type="button" data-a="ms_login">Connecter Outlook</button>
+      ${localStorage.getItem('ms_token') ? '<button class="link-btn" type="button" data-a="ms_logout">Déconnecter</button>' : ''}
+    </div>
     <button class="link-btn" type="button" data-a="logout">Se déconnecter</button>
   </section>`;
 }
@@ -1231,6 +1238,18 @@ document.addEventListener('click', (e) => {
       render();
       break;
     }
+    case 'ms_login': {
+      fetch('/api/auth/login').then(r => r.json()).then(d => {
+        if (d.authUrl) window.location.href = d.authUrl;
+      }).catch(() => toast('Erreur connexion Outlook', { err: true }));
+      break;
+    }
+    case 'ms_logout': {
+      try { localStorage.removeItem('ms_token'); } catch { /* rien */ }
+      renderSheet();
+      toast('Outlook déconnecté');
+      break;
+    }
     case 'add': openSheet({ kind: 'add', form: defaultsForAdd({ date: el.dataset.date, type: el.dataset.type }) }); break;
     case 'edit': {
       if (Date.now() - S.justDragged < 450) return;
@@ -1395,6 +1414,25 @@ document.addEventListener('submit', async (e) => {
 /* =========================================================
    10. Démarrage
    ========================================================= */
+// Extraire le token Outlook de l'URL
+const urlParams = new URLSearchParams(window.location.search);
+const msToken = urlParams.get('ms_token');
+const msRefresh = urlParams.get('ms_refresh');
+if (msToken) {
+  try { localStorage.setItem('ms_token', msToken); } catch { /* rien */ }
+  if (msRefresh) {
+    try { localStorage.setItem('ms_refresh', msRefresh); } catch { /* rien */ }
+  }
+  // Nettoyer l'URL
+  window.history.replaceState({}, document.title, window.location.pathname);
+  toast('✓ Outlook connecté');
+}
+const error = urlParams.get('error');
+if (error) {
+  toast('Erreur Outlook: ' + error, { err: true });
+  window.history.replaceState({}, document.title, window.location.pathname);
+}
+
 try { applyTheme(localStorage.getItem(THEME_KEY) || 'light'); } catch { applyTheme('light'); }
 render();
 load(true);
