@@ -92,6 +92,14 @@ function lateText(it) {
   const n = daysBetween(itemDay(it), todayKey());
   return n <= 1 ? 'En retard depuis hier' : `En retard depuis ${n} jours`;
 }
+function fmtDuration(min) {
+  if (!min || min <= 0) return '';
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h === 0) return `${m} min`;
+  if (m === 0) return `${h} h`;
+  return `${h} h ${m}`;
+}
 
 /* =========================================================
    2. État de l'appli
@@ -343,6 +351,7 @@ function cardHTML(it, o = {}) {
   if (o.late) meta.push(`<span class="late-txt">${lateText(it)}</span>`);
   if (o.showDay && itemDay(it)) meta.push(`<span>${esc(fmtShort(itemDay(it)))}</span>`);
   if (itemTime(it)) meta.push(`<span>${itemTime(it)}</span>`);
+  if (it.duration) meta.push(`<span>${esc(fmtDuration(it.duration))}</span>`);
   const p = o.showProj === false ? null : projectOf(it);
   if (p) meta.push(`<span>${esc(p.title)}</span>`);
   const check = it.type === 'Tâche' || o.forceCheck
@@ -375,12 +384,14 @@ function viewJour() {
   const done = late.filter((i) => i.archived).length + today.filter((i) => i.archived).length;
   const lateOpen = late.filter(active).length;
   const pct = total ? Math.round((done / total) * 100) : 0;
+  const totalDur = today.reduce((sum, i) => sum + (i.duration || 0), 0);
+  const durStr = totalDur ? ` · ${fmtDuration(totalDur)} prévues` : '';
 
   return `<main class="screen">
     ${header(cap(fmt(t, { weekday: 'long', day: 'numeric', month: 'long' })), "Aujourd'hui", inboxBtn() + settingsBtn())}
     ${banner()}
     <section class="today-box" aria-label="Avancement du jour">
-      <div class="today-top"><span>Ta journée</span><strong>${done} / ${total} faite${done > 1 ? 's' : ''}</strong></div>
+      <div class="today-top"><span>Ta journée</span><strong>${done} / ${total} faite${done > 1 ? 's' : ''}${durStr}</strong></div>
       <div class="bar"><i style="width:${pct}%"></i></div>
       <div class="today-stats"><span class="l">${lateOpen} en retard</span><span>${today.filter(active).length} tâche${today.filter(active).length > 1 ? 's' : ''}</span><span>${rdv.length} rendez-vous</span></div>
     </section>
@@ -644,13 +655,13 @@ function formFromItem(it) {
   const day = itemDay(it);
   return {
     title: it.title, type: it.type || 'Tâche', domain: it.domain || '',
-    day: day || '', time: itemTime(it), parent: it.parent || (projectOf(it) || {}).id || '', projState: it.projState || 'À lancer'
+    day: day || '', time: itemTime(it), parent: it.parent || (projectOf(it) || {}).id || '', projState: it.projState || 'À lancer', duration: it.duration || null
   };
 }
 function defaultsForAdd(extra = {}) {
   const t = todayKey();
   const v = S.view;
-  const base = { title: '', type: 'Tâche', domain: '', day: t, time: '', parent: '', projState: 'À lancer' };
+  const base = { title: '', type: 'Tâche', domain: '', day: t, time: '', parent: '', projState: 'À lancer', duration: null };
   if (v === 'plustard') base.day = S.selDay || t;
   if (v === 'projets') Object.assign(base, { type: 'Projet', day: '' });
   if (v === 'idees') Object.assign(base, { type: 'Idée business', day: '' });
@@ -702,6 +713,7 @@ function formSheetHTML() {
         <input type="time" data-f="time" value="${esc(f.time)}" aria-label="Heure (facultatif)" ${f.day ? '' : 'disabled'}>
       </div>
     </div>
+    ${f.type === 'Tâche' || f.type === 'Agenda' ? `<div class="field"><span>Durée</span><div class="pills">${[30, 60, 90, 120, 150, 180, 240, 300, 480].map((v) => `<button class="pill" type="button" data-a="fset" data-k="duration" data-v="${v}" aria-pressed="${f.duration === v}">${fmtDuration(v)}</button>`).join('')}<button class="pill" type="button" data-a="fset" data-k="duration" data-v="" aria-pressed="${!f.duration}">Aucune</button></div></div>` : ''}
     ${f.type === 'Projet'
       ? `<div class="field"><span>État du projet</span><div class="pills">${pills(['À lancer', 'En cours', 'En attente'], 'projState', f.projState)}</div></div>`
       : `<div class="field"><label for="f-parent">Projet</label><select id="f-parent" data-f="parent"><option value="">Aucun projet</option>${projOptions}</select></div>`}
@@ -820,6 +832,7 @@ async function submitForm() {
     const input = { title, type: f.type, domain: f.domain || undefined, date: date || undefined };
     if (f.type === 'Projet') input.projState = f.projState;
     else if (f.parent) input.parent = f.parent;
+    if (f.duration) input.duration = f.duration;
     try {
       await create(input);
       closeSheet();
@@ -849,6 +862,7 @@ async function submitForm() {
   }
   if (f.type === 'Projet' && f.projState !== o.projState) patch.projState = f.projState;
   if (f.type !== 'Projet' && f.parent !== o.parent) patch.parent = f.parent || null;
+  if (f.duration !== o.duration) patch.duration = f.duration || null;
   if (!Object.keys(patch).length) { closeSheet(); return; }
   closeSheet();
   try { await update(it.id, patch); toast('Enregistré'); } catch { /* message déjà affiché */ }
@@ -1295,7 +1309,11 @@ document.addEventListener('click', (e) => {
       if (!f) return;
       const k = el.dataset.k;
       const v = el.dataset.v;
-      f[k] = k === 'domain' && f.domain === v ? '' : v;
+      if (k === 'duration') {
+        f[k] = v ? Number(v) : null;
+      } else {
+        f[k] = k === 'domain' && f.domain === v ? '' : v;
+      }
       if (k === 'day' && !v) f.time = '';
       if (k === 'type' && v === 'Agenda' && !f.day) f.day = todayKey(); // un rendez-vous a toujours une date
       const title = document.getElementById('f-title');

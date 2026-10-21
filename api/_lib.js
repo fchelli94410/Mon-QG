@@ -16,7 +16,8 @@ export const P = {
   projState: 'État projet',
   parent: 'Projet parent',
   linked: 'Éléments liés',
-  order: 'Ordre' // position dans les listes de l'appli (nombre)
+  order: 'Ordre', // position dans les listes de l'appli (nombre)
+  duration: 'Durée (min)' // durée estimée en minutes
 };
 
 export const TYPES = ['Tâche', 'À trier', 'Agenda', 'Projet', 'Idée business', 'Idée'];
@@ -150,6 +151,7 @@ export function toItem(page) {
     parent: rel(P.parent)[0] || null,
     linked: rel(P.linked),
     order: (p[P.order] && typeof p[P.order].number === 'number') ? p[P.order].number : null,
+    duration: (p[P.duration] && typeof p[P.duration].number === 'number') ? p[P.duration].number : null,
     created: page.created_time,
     edited: page.last_edited_time
   };
@@ -192,11 +194,16 @@ export function toProperties(input) {
     if (id && !/^[0-9a-f-]{32,36}$/i.test(id)) throw Object.assign(new Error('Projet invalide.'), { status: 400 });
     props[P.parent] = { relation: id ? [{ id }] : [] };
   }
+  if ('duration' in input) {
+    const n = input.duration;
+    if (n !== null && (!Number.isFinite(n) || n < 0)) throw Object.assign(new Error('Durée invalide.'), { status: 400 });
+    props[P.duration] = { number: n === null ? null : n };
+  }
   return props;
 }
 
 // ---------- Modifier une fiche (avec contrôle : uniquement la base du QG) ----------
-export const EDITABLE = ['title', 'type', 'domain', 'date', 'archived', 'projState', 'parent', 'order'];
+export const EDITABLE = ['title', 'type', 'domain', 'date', 'archived', 'projState', 'parent', 'order', 'duration'];
 const cleanId = (id) => String(id || '').replace(/-/g, '').toLowerCase();
 
 export async function patchItem(id, body) {
