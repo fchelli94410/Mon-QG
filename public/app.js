@@ -114,6 +114,35 @@ const S = {
   sheet: null, toastTimer: null
 };
 const byId = (id) => S.items.find((i) => i.id === id);
+// Rendez-vous Outlook masqués : retenus sur cet appareil seulement (rien n'est changé dans Outlook).
+const HIDDEN_KEY = 'qg_hidden_ms';
+const isMs = (it) => it && it.source === 'outlook';
+function hiddenSet() {
+  try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]')); } catch { return new Set(); }
+}
+function saveHidden(set) {
+  try { localStorage.setItem(HIDDEN_KEY, JSON.stringify([...set])); } catch { /* rien */ }
+}
+function applyHidden(items, prune) {
+  const h = hiddenSet();
+  if (prune) {
+    const ids = new Set(items.filter(isMs).map((i) => i.id));
+    let changed = false;
+    h.forEach((id) => { if (!ids.has(id)) { h.delete(id); changed = true; } });
+    if (changed) saveHidden(h);
+  }
+  items.forEach((i) => { if (isMs(i)) i.archived = h.has(i.id); });
+  return items;
+}
+function hideMs(id, on) {
+  const h = hiddenSet();
+  if (on) h.add(id); else h.delete(id);
+  saveHidden(h);
+  const it = byId(id);
+  if (it) it.archived = !!on;
+  saveCache();
+  render();
+}
 const active = (i) => !i.archived;
 const projects = () => S.items.filter((i) => i.type === 'Projet');
 function projectOf(it) {
@@ -148,7 +177,7 @@ const todayListSort = (a, b) => (a.archived - b.archived) || byOrder(doneLast)(a
 
 try {
   const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
-  if (c && Array.isArray(c.items)) { S.items = c.items; S.loading = false; }
+  if (c && Array.isArray(c.items)) { S.items = applyHidden(c.items); S.loading = false; }
 } catch { /* rien */ }
 
 /* =========================================================
@@ -185,7 +214,7 @@ async function load(silent) {
     if (msRef) q.set('ms_refresh', msRef);
     const path = q.toString() ? `/api/items?${q}` : '/api/items';
     const d = await api(path);
-    S.items = d.items;
+    S.items = applyHidden(d.items, !!(msToken || msRef) && !d.ms_expired);
     try {
       if (d.ms_tokens) {
         localStorage.setItem('ms_token', d.ms_tokens.accessToken);
@@ -221,6 +250,10 @@ function relinkLocally(id, oldParent, newParent) {
 async function update(id, patch) {
   const it = byId(id);
   if (!it) return;
+  if (isMs(it)) { // rendez-vous Outlook : on ne touche ni à Notion ni à Outlook
+    if ('archived' in patch) hideMs(id, patch.archived);
+    return it;
+  }
   const before = { ...it, linked: [...it.linked] };
   const oldParent = it.parent;
   Object.assign(it, patch);
@@ -752,6 +785,23 @@ function formSheetHTML() {
   </form>`;
 }
 
+function msSheetHTML() {
+  const it = byId(S.sheet.id);
+  if (!it) return '';
+  const d = itemDay(it);
+  const t = itemTime(it);
+  const e = itemEndTime(it);
+  const when = [d ? cap(fmt(d, { weekday: 'long', day: 'numeric', month: 'long' })) : '', t ? t + (e ? ' – ' + e : '') : 'Journée'].filter(Boolean).join(' · ');
+  return `<div class="backdrop" data-a="close"></div>
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="Rendez-vous Outlook">
+    <span class="grip" aria-hidden="true"></span><button class="icon-btn sm sheet-x" type="button" data-a="close" aria-label="Fermer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <h2>${esc(it.title)}</h2>
+    <p class="note">${esc(when)}</p>
+    <p class="note">Rendez-vous Outlook. Masquer le retire de Mon QG sur cet appareil ; il reste dans Outlook.</p>
+    <button class="primary" type="button" data-a="done" data-id="${it.id}" data-close="1">${it.archived ? 'Réafficher' : 'Masquer de Mon QG'}</button>
+  </div>`;
+}
+
 function projectSheetHTML() {
   const p = byId(S.sheet.id);
   if (!p) return '';
@@ -840,7 +890,7 @@ function renderSheet() {
   if (!S.sheet) { root.innerHTML = ''; return; }
   const k = S.sheet.kind;
   keep(root, () => {
-    root.innerHTML = k === 'project' ? projectSheetHTML() : k === 'plan' ? planSheetHTML() : k === 'settings' ? settingsSheetHTML() : formSheetHTML();
+    root.innerHTML = k === 'project' ? projectSheetHTML() : k === 'plan' ? planSheetHTML() : k === 'settings' ? settingsSheetHTML() : k === 'ms' ? msSheetHTML() : formSheetHTML();
   });
   if (!root.innerHTML.trim()) closeSheet();
   bindDnd();
@@ -1219,7 +1269,7 @@ async function toggleDone(id, el) {
   }
   try {
     await update(id, { archived: now });
-    if (now) toast(it.type === 'Tâche' ? 'Terminé' : 'Archivé', { undo: () => update(id, { archived: false }).catch(() => {}) });
+    if (now) toast(isMs(it) ? 'Masqué de Mon QG' : it.type === 'Tâche' ? 'Terminé' : 'Archivé', { undo: () => update(id, { archived: false }).catch(() => {}) });
   } catch { /* déjà signalé */ }
 }
 
@@ -1280,7 +1330,8 @@ document.addEventListener('click', (e) => {
     case 'edit': {
       if (Date.now() - S.justDragged < 450) return;
       const it = byId(id);
-      if (it) openSheet({ kind: 'edit', id, form: formFromItem(it), orig: formFromItem(it) });
+      if (it && isMs(it)) openSheet({ kind: 'ms', id });
+      else if (it) openSheet({ kind: 'edit', id, form: formFromItem(it), orig: formFromItem(it) });
       break;
     }
     case 'close': closeSheet(); break;
